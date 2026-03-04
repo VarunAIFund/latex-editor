@@ -1,0 +1,189 @@
+%-------------------------
+% Resume in Latex
+% Author : Jake Gutierrez
+% Based off of: https://github.com/sb2nov/resume
+% License : MIT
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+% Ensure that generate pdf is machine readable/ATS parsable
+\pdfgentounicode=1
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    \textbf{\Huge \scshape Varun Sharma} \\ \vspace{1pt}
+    \small Milpitas, CA $|$ (408) 505 2376 $|$
+    \href{mailto:vas001@ucsd.edu}{\underline{vas001@ucsd.edu}} $|$
+    U.S. Citizen
+    % Optional links (uncomment and fill in):
+    % $|$ \href{https://linkedin.com/in/YOUR}{\underline{linkedin.com/in/YOUR}}
+    % $|$ \href{https://github.com/YOUR}{\underline{github.com/YOUR}}
+\end{center}
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of California, San Diego}{La Jolla, CA}
+      {B.S. Mathematics and Computer Science \;|\; Minor: Cognitive Science}{Expected Dec 2026}
+      \resumeItemListStart
+        \resumeItem{Cumulative GPA: 3.9/4.0; Provost Honors 2023--2026}
+        \resumeItem{Relevant Coursework: Data Structures \& OOD, Computer Organization, Design \& Analysis of Algorithms, Database System Principles, Web Mining \& AI Recommender Systems, Machine Learning}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {Visa}{Austin, TX}
+      {Incoming Software Engineer Intern}{Jun 2026 -- Aug 2026}
+      \resumeItemListStart
+        \resumeItem{Developing agentic AI workflows and an LLM + RAG chatbot for querying the CDISI knowledge base.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {DeepLearning.AI}{Mountain View, CA}
+      {Software Engineer Intern}{Sep 2025 -- Present}
+      \resumeItemListStart
+        \resumeItem{Maintaining and updating the AI Developer Conference website, publishing new content, coordinating event changes, and ensuring accuracy of technical event and speaker information.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {AI Fund}{Mountain View, CA}
+      {AI \& Technical Program Management Intern}{Jul 2025 -- Present}
+      \resumeItemListStart
+        \resumeItem{Built the AI Fund Buildathon website as a full-stack platform for event information, application intake, and HR review.}
+        \resumeItem{Designed and implemented a Retrieval-Augmented Generation (RAG) system using OpenAI APIs and SQL to query, search, and rank thousands of LinkedIn profiles via natural language.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Planck AI}{Remote}
+      {Data Validation Intern}{Mar 2025 -- Jul 2025}
+      \resumeItemListStart
+        \resumeItem{Built scalable PDF processing pipelines using PDFPlumber, LayoutParser, and OCR to extract structured data from diverse, multi-layout documents for integration into LLM workflows.}
+        \resumeItem{Automated layout validation, segmented document elements, and generated annotated visualizations to ensure high-quality inputs for downstream tasks.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Integem}{Cupertino, CA}
+      {Artificial Intelligence \& AR Project Intern}{Jun 2024 -- Sep 2024}
+      \resumeItemListStart
+        \resumeItem{Developed and optimized a TensorFlow-based real-time image recognition system using live camera feeds, improving accuracy by 10\%.}
+        \resumeItem{Trained image classification models on NVIDIA Jetson Nano and built AR game components in Python using Raspberry Pi robots.}
+      \resumeItemListEnd
+
+    % Optional: keep if you want, but I left it out to keep the section tighter
+    % \resumeSubheading
+    %   {ULAB Systems}{San Mateo, CA}
+    %   {R\&D Summer Intern}{Jun 2021 -- Aug 2022}
+    %   \resumeItemListStart
+    %     \resumeItem{Developed Python scripts to analyze material stress-force properties while collaborating with engineers and scientists.}
+    %   \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+%-----------PROJECTS-----------
+\section{Projects}
+  \resumeSubHeadingListStart
+
+    \resumeProjectHeading
+      {\textbf{Healthcare Patient Scheduling Chatbot} $|$ \emph{React, Supabase, OpenAI API, Google Calendar}}{May 2025}
+      \resumeItemListStart
+        \resumeItem{Built a React chatbot to match patients with therapists based on needs and specialty; integrated Google Calendar to automate appointment scheduling.}
+        \resumeItem{Developed an admin dashboard to manage patient inquiries and scheduled appointments.}
+      \resumeItemListEnd
+
+    \resumeProjectHeading
+      {\textbf{Automatic Playlist Continuation} $|$ \emph{Python, ML}}{Dec 2024}
+      \resumeItemListStart
+        \resumeItem{Contributed to a playlist recommendation project using the Spotify Million Playlist Dataset Challenge.}
+        \resumeItem{Implemented Word2Vec, AutoEncoder, and CNN-based models for song representation and sequence prediction.}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}{: Python, SQL} \\
+     \textbf{AI/ML}{: LLMs, Agentic AI, RAG, Prompt Engineering, Reinforcement Learning, NLP, Computer Vision, TensorFlow, PyTorch} \\
+     \textbf{Tools/Systems}{: LangChain, Knowledge Graphs, Data Systems, DataOps, Git}
+    }}
+ \end{itemize}
+
+\end{document}

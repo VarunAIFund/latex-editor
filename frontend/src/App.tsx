@@ -3,7 +3,7 @@ import { Save, Mail, RefreshCw, FileDown, Check, X, Sparkles } from "lucide-reac
 import ResumeSidebar from "./components/ResumeSidebar";
 import LatexEditor from "./components/LatexEditor";
 import PdfPreview from "./components/PdfPreview";
-import AIPanel, { type ChatMessage } from "./components/AIPanel";
+import AIPanel from "./components/AIPanel";
 import CoverLetterModal from "./components/CoverLetterModal";
 import MarginsPanel from "./components/MarginsPanel";
 import { compileLatex, listResumes, loadResume, saveResume } from "./api";
@@ -84,8 +84,6 @@ export default function App() {
   const [diff, setDiff] = useState<{ original: string; suggested: string } | null>(null);
   const [showCoverLetter, setShowCoverLetter] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(true);
-  // Chat history keyed by resume name so it persists when switching resumes
-  const [chatHistories, setChatHistories] = useState<Record<string, ChatMessage[]>>({});
   // Cache the pre-diff PDF so we can restore it on reject
   const preDiffPdfRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,12 +151,7 @@ export default function App() {
   const handleRename = async (oldName: string, newName: string) => {
     await fetchResumes();
     if (activeResume === oldName) setActiveResume(newName);
-    // Update chat history key
-    setChatHistories((prev) => {
-      if (!(oldName in prev)) return prev;
-      const { [oldName]: history, ...rest } = prev;
-      return { ...rest, [newName]: history };
-    });
+    // Chat threads are remapped on the backend automatically (rename route hooks chat_store)
   };
 
   const handleSaveAs = async () => {
@@ -378,10 +371,6 @@ export default function App() {
             latex={latex}
             pdfBase64={pdfBase64}
             resumeName={activeResume}
-            chatHistory={chatHistories[activeResume ?? ""] ?? []}
-            onChatHistoryChange={(history) =>
-              setChatHistories((prev) => ({ ...prev, [activeResume ?? ""]: history }))
-            }
             onSuggestion={handleAISuggestion}
           />
         )}

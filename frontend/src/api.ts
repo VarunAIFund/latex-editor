@@ -99,3 +99,48 @@ export async function renameResume(oldName: string, newName: string): Promise<vo
 export async function deleteResume(name: string): Promise<void> {
   await fetch(`${BASE}/resumes/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
+
+// ── Chat threads ──────────────────────────────────────────────────────────────
+
+export interface ChatThreadSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  message_count: number;
+}
+
+export interface ChatThreadFull {
+  id: string;
+  title: string;
+  created_at: string;
+  messages: import("./components/AIPanel").ChatMessage[];
+}
+
+export async function listChatThreads(resume: string): Promise<ChatThreadSummary[]> {
+  const res = await fetch(`${BASE}/chats/${encodeURIComponent(resume)}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function getChatThread(resume: string, threadId: string): Promise<ChatThreadFull | null> {
+  const res = await fetch(`${BASE}/chats/${encodeURIComponent(resume)}/${encodeURIComponent(threadId)}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function saveChatThread(
+  resume: string,
+  thread: { id: string; title: string; created_at: string; messages: unknown[] },
+): Promise<void> {
+  await fetch(`${BASE}/chats/${encodeURIComponent(resume)}/${encodeURIComponent(thread.id)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: thread.title, created_at: thread.created_at, messages: thread.messages }),
+  });
+}
+
+export async function deleteChatThread(resume: string, threadId: string): Promise<void> {
+  await fetch(`${BASE}/chats/${encodeURIComponent(resume)}/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
+  });
+}

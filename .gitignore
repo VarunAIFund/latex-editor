@@ -54,3 +54,7 @@ backend/resumes/
 
 # Candidate knowledge base (personal info)
 backend/KNOWLEDGE.md
+
+# Chat history (personal conversations)
+backend/chat_history.json
+backend/chat_history.json.tmp

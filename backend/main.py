@@ -13,6 +13,7 @@ from pydantic import BaseModel
 import store
 import compiler
 import ai_service
+import chat_store
 
 app = FastAPI(title="LaTeX Resume Tailoring API")
 
@@ -62,6 +63,17 @@ class SaveResumeRequest(BaseModel):
 
 class RenameResumeRequest(BaseModel):
     new_name: str
+
+class ChatThread(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    messages: list[dict] = []
+
+class UpsertThreadRequest(BaseModel):
+    title: str
+    created_at: str
+    messages: list[dict] = []
 
 class ResumeListResponse(BaseModel):
     names: list[str]
@@ -131,6 +143,7 @@ async def rename_resume_route(name: str, req: RenameResumeRequest):
     ok = store.rename_resume(name, new_name)
     if not ok:
         raise HTTPException(status_code=400, detail=f"Cannot rename '{name}' to '{new_name}' (not found or name already taken)")
+    chat_store.rename_resume(name, new_name)
     return {"old_name": name, "new_name": new_name}
 
 
@@ -139,4 +152,35 @@ async def delete_resume_route(name: str):
     ok = store.delete_resume(name)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Resume '{name}' not found")
+    chat_store.delete_resume(name)
     return {"deleted": name}
+
+
+# ─── Chat Thread Routes ────────────────────────────────────────────────────────
+
+@app.get("/chats/{resume}")
+async def list_threads_route(resume: str):
+    return chat_store.get_threads(resume)
+
+
+@app.get("/chats/{resume}/{thread_id}")
+async def get_thread_route(resume: str, thread_id: str):
+    thread = chat_store.get_thread(resume, thread_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+
+@app.post("/chats/{resume}/{thread_id}")
+async def upsert_thread_route(resume: str, thread_id: str, req: UpsertThreadRequest):
+    thread = {"id": thread_id, "title": req.title, "created_at": req.created_at, "messages": req.messages}
+    chat_store.upsert_thread(resume, thread)
+    return thread
+
+
+@app.delete("/chats/{resume}/{thread_id}")
+async def delete_thread_route(resume: str, thread_id: str):
+    ok = chat_store.delete_thread(resume, thread_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"deleted": thread_id}

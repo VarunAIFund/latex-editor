@@ -19,20 +19,23 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-interface Props {
-  latex: string;
-  pdfBase64: string | null;
-  onSuggestion: (original: string, suggested: string) => void;
-}
-
-type PendingEdit = {
+export type PendingEdit = {
   suggestedLatex: string;
   explanation: string;
 };
 
-type ChatMessage =
+export type ChatMessage =
   | { role: "user"; text: string; images?: string[] }
   | { role: "assistant"; text: string; pendingEdit?: PendingEdit; editAccepted?: boolean | null };
+
+interface Props {
+  latex: string;
+  pdfBase64: string | null;
+  resumeName: string | null;
+  chatHistory: ChatMessage[];
+  onChatHistoryChange: (history: ChatMessage[]) => void;
+  onSuggestion: (original: string, suggested: string) => void;
+}
 
 const YES_PHRASES = new Set([
   "yes", "y", "yep", "yeah", "yup", "sure", "ok", "okay",
@@ -67,16 +70,31 @@ async function renderAllPdfPagesToPng(base64: string): Promise<string[]> {
   return results;
 }
 
-export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
+export default function AIPanel({
+  latex,
+  pdfBase64,
+  resumeName,
+  chatHistory,
+  onChatHistoryChange,
+  onSuggestion,
+}: Props) {
+  const setChatHistory = onChatHistoryChange;
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
   const [pdfAttaching, setPdfAttaching] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Track the resume name at request time so we can discard stale responses
+  const activeResumeRef = useRef(resumeName);
+  useEffect(() => {
+    activeResumeRef.current = resumeName;
+    // If we switch resumes while a request is in-flight, clear the loading state
+    setLoading(false);
+    setError(null);
+  }, [resumeName]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -96,22 +114,22 @@ export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
       const msg = chatHistory[idx];
       if (msg.role !== "assistant" || !msg.pendingEdit) return;
       onSuggestion(latex, msg.pendingEdit.suggestedLatex);
-      setChatHistory((prev) =>
-        prev.map((m, i) =>
+      setChatHistory(
+        chatHistory.map((m, i) =>
           i === idx && m.role === "assistant" ? { ...m, editAccepted: true } : m
         )
       );
     },
-    [chatHistory, latex, onSuggestion]
+    [chatHistory, latex, onSuggestion, setChatHistory]
   );
 
   const rejectEdit = useCallback((idx: number) => {
-    setChatHistory((prev) =>
-      prev.map((m, i) =>
+    setChatHistory(
+      chatHistory.map((m, i) =>
         i === idx && m.role === "assistant" ? { ...m, editAccepted: false } : m
       )
     );
-  }, []);
+  }, [chatHistory, setChatHistory]);
 
   const addImages = useCallback(async (files: File[]) => {
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
@@ -162,8 +180,8 @@ export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
     // Shortcut: "yes" / "apply" accepts a pending edit without hitting the API
     if (pendingEditIndex >= 0 && YES_PHRASES.has(trimmed.toLowerCase())) {
       acceptEdit(pendingEditIndex);
-      setChatHistory((prev) => [
-        ...prev,
+      setChatHistory([
+        ...chatHistory,
         { role: "user", text: trimmed },
         { role: "assistant", text: "Done! The changes have been applied to the editor." },
       ]);
@@ -174,18 +192,23 @@ export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
     setLoading(true);
     setError(null);
     const currentImages = [...images];
+    // Snapshot the resume we're editing so we can detect a mid-flight switch
+    const resumeAtSubmit = activeResumeRef.current;
 
-    setChatHistory((prev) => [
-      ...prev,
-      { role: "user", text: trimmed, images: currentImages.length ? currentImages : undefined },
-    ]);
+    // Build up a local history snapshot so post-await appends aren't stale
+    const userMsg: ChatMessage = {
+      role: "user",
+      text: trimmed,
+      images: currentImages.length ? currentImages : undefined,
+    };
+    const historyWithUser: ChatMessage[] = [...chatHistory, userMsg];
+    setChatHistory(historyWithUser);
     setPrompt("");
     setImages([]);
 
     // Build OpenAI-format history (text only — no inline images in history)
     const historyForApi = chatHistory.flatMap<{ role: string; content: string }>((msg) => {
       if (msg.role === "user") return [{ role: "user", content: msg.text }];
-      // For assistant edits, send the explanation so the model knows what it proposed
       const content = msg.pendingEdit
         ? `${msg.text} [Proposed edit: ${msg.pendingEdit.explanation}]`
         : msg.text;
@@ -195,9 +218,12 @@ export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
     try {
       const result = await aiEdit(latex, trimmed, currentImages, historyForApi, useKnowledgeBase);
 
+      // User switched resumes while we were waiting — silently discard the response
+      if (activeResumeRef.current !== resumeAtSubmit) return;
+
       if (result.type === "edit" && result.suggested_latex) {
-        setChatHistory((prev) => [
-          ...prev,
+        setChatHistory([
+          ...historyWithUser,
           {
             role: "assistant",
             text: result.message,
@@ -209,16 +235,21 @@ export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
           },
         ]);
       } else {
-        setChatHistory((prev) => [
-          ...prev,
+        setChatHistory([
+          ...historyWithUser,
           { role: "assistant", text: result.message },
         ]);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
-      setChatHistory((prev) => prev.slice(0, -1));
+      if (activeResumeRef.current === resumeAtSubmit) {
+        setError(e instanceof Error ? e.message : "Something went wrong");
+        // Roll back the user message we optimistically added
+        setChatHistory(chatHistory);
+      }
     } finally {
-      setLoading(false);
+      if (activeResumeRef.current === resumeAtSubmit) {
+        setLoading(false);
+      }
     }
   };
 
@@ -229,6 +260,11 @@ export default function AIPanel({ latex, pdfBase64, onSuggestion }: Props) {
         <div className="flex items-center gap-2">
           <Sparkles size={13} className="text-indigo-400" />
           <span className="text-xs text-indigo-300 font-medium uppercase tracking-wider">AI Assistant</span>
+          {resumeName && (
+            <span className="text-xs text-gray-500">
+              — editing <span className="text-gray-300 font-medium">{resumeName}</span>
+            </span>
+          )}
         </div>
         <button
           onClick={() => setUseKnowledgeBase((v) => !v)}

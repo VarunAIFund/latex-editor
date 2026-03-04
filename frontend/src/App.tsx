@@ -360,7 +360,7 @@ export default function App() {
 
         {/* AI Panel */}
         {(activeResume || latex) && !diff && showAIPanel && (
-          <AIPanel latex={latex} onSuggestion={handleAISuggestion} />
+          <AIPanel latex={latex} pdfBase64={pdfBase64} onSuggestion={handleAISuggestion} />
         )}
       </div>
 

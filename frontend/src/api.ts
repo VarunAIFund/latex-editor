@@ -6,7 +6,9 @@ export interface CompileResult {
 }
 
 export interface AIEditResult {
-  suggested_latex: string;
+  type: "message" | "edit";
+  message: string;
+  suggested_latex: string | null;
 }
 
 export interface CoverLetterResult {
@@ -24,11 +26,17 @@ export async function compileLatex(latex: string): Promise<CompileResult> {
   return res.json();
 }
 
-export async function aiEdit(latex: string, prompt: string, images: string[] = []): Promise<AIEditResult> {
+export async function aiEdit(
+  latex: string,
+  prompt: string,
+  images: string[] = [],
+  history: { role: string; content: string }[] = [],
+  useKnowledgeBase: boolean = true,
+): Promise<AIEditResult> {
   const res = await fetch(`${BASE}/ai/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ latex, prompt, images }),
+    body: JSON.stringify({ latex, prompt, images, history, use_knowledge_base: useKnowledgeBase }),
   });
   if (!res.ok) {
     const err = await res.json();

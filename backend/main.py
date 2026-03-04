@@ -37,10 +37,14 @@ class CompileResponse(BaseModel):
 class AIEditRequest(BaseModel):
     latex: str
     prompt: str
-    images: list[str] = []  # list of data URLs: "data:image/png;base64,..."
+    images: list[str] = []          # data URLs: "data:image/png;base64,..."
+    history: list[dict] = []        # prior OpenAI message dicts
+    use_knowledge_base: bool = True
 
 class AIEditResponse(BaseModel):
-    suggested_latex: str
+    type: str                          # "message" | "edit"
+    message: str                       # assistant's reply text
+    suggested_latex: str | None = None # only when type == "edit"
 
 class CoverLetterRequest(BaseModel):
     resume_latex: str
@@ -76,8 +80,10 @@ async def compile_route(req: CompileRequest):
 async def ai_edit_route(req: AIEditRequest):
     if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
-    suggested = await ai_service.ai_edit_latex(req.latex, req.prompt, req.images)
-    return AIEditResponse(suggested_latex=suggested)
+    result = await ai_service.ai_chat(
+        req.latex, req.prompt, req.images, req.history, req.use_knowledge_base
+    )
+    return AIEditResponse(**result)
 
 
 @app.post("/ai/cover-letter", response_model=CoverLetterResponse)

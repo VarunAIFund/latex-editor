@@ -80,12 +80,15 @@ export default function ResumeSidebar({
               />
               {name}
             </span>
-            <button
+            <span
+              role="button"
+              tabIndex={0}
               onClick={(e) => handleDelete(name, e)}
+              onKeyDown={(e) => e.key === "Enter" && handleDelete(name, e as never)}
               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-opacity"
             >
               <Trash2 size={13} />
-            </button>
+            </span>
           </button>
         ))}
       </div>

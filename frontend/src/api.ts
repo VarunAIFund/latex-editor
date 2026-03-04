@@ -84,6 +84,18 @@ export async function saveResume(name: string, latex: string): Promise<void> {
   });
 }
 
+export async function renameResume(oldName: string, newName: string): Promise<void> {
+  const res = await fetch(`${BASE}/resumes/${encodeURIComponent(oldName)}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_name: newName }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Rename failed");
+  }
+}
+
 export async function deleteResume(name: string): Promise<void> {
   await fetch(`${BASE}/resumes/${encodeURIComponent(name)}`, { method: "DELETE" });
 }

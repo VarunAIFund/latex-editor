@@ -150,6 +150,17 @@ export default function App() {
     setSaving(false);
   };
 
+  const handleRename = async (oldName: string, newName: string) => {
+    await fetchResumes();
+    if (activeResume === oldName) setActiveResume(newName);
+    // Update chat history key
+    setChatHistories((prev) => {
+      if (!(oldName in prev)) return prev;
+      const { [oldName]: history, ...rest } = prev;
+      return { ...rest, [newName]: history };
+    });
+  };
+
   const handleSaveAs = async () => {
     const suggested = activeResume ? `${activeResume} (copy)` : "";
     const name = window.prompt("Save as (new name):", suggested);
@@ -208,6 +219,7 @@ export default function App() {
         activeResume={activeResume}
         onSelect={handleSelect}
         onNew={handleNew}
+        onRename={handleRename}
         onRefresh={fetchResumes}
       />
 

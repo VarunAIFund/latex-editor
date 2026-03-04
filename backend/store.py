@@ -39,6 +39,19 @@ def list_resumes() -> list[str]:
     return sorted(_store.keys())
 
 
+def rename_resume(old_name: str, new_name: str) -> bool:
+    if old_name not in _store or new_name in _store:
+        return False
+    latex = _store.pop(old_name)
+    _store[new_name] = latex
+    old_path = _tex_path(old_name)
+    if old_path.exists():
+        old_path.rename(_tex_path(new_name))
+    else:
+        _tex_path(new_name).write_text(latex, encoding="utf-8")
+    return True
+
+
 def delete_resume(name: str) -> bool:
     if name not in _store:
         return False

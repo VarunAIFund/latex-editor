@@ -60,6 +60,9 @@ class CoverLetterResponse(BaseModel):
 class SaveResumeRequest(BaseModel):
     latex: str
 
+class RenameResumeRequest(BaseModel):
+    new_name: str
+
 class ResumeListResponse(BaseModel):
     names: list[str]
 
@@ -118,6 +121,17 @@ async def get_resume_route(name: str):
 async def save_resume_route(name: str, req: SaveResumeRequest):
     store.save_resume(name, req.latex)
     return ResumeResponse(name=name, latex=req.latex)
+
+
+@app.post("/resumes/{name}/rename")
+async def rename_resume_route(name: str, req: RenameResumeRequest):
+    new_name = req.new_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="New name cannot be empty")
+    ok = store.rename_resume(name, new_name)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"Cannot rename '{name}' to '{new_name}' (not found or name already taken)")
+    return {"old_name": name, "new_name": new_name}
 
 
 @app.delete("/resumes/{name}")

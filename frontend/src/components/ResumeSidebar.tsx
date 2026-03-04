@@ -1,12 +1,13 @@
 import { useState, useRef } from "react";
-import { FileText, Plus, Trash2, Upload, ChevronRight } from "lucide-react";
-import { deleteResume } from "../api";
+import { FileText, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X } from "lucide-react";
+import { deleteResume, renameResume } from "../api";
 
 interface Props {
   resumes: string[];
   activeResume: string | null;
   onSelect: (name: string) => void;
   onNew: (name: string, latex?: string) => void;
+  onRename: (oldName: string, newName: string) => void;
   onRefresh: () => void;
 }
 
@@ -15,10 +16,13 @@ export default function ResumeSidebar({
   activeResume,
   onSelect,
   onNew,
+  onRename,
   onRefresh,
 }: Props) {
   const [newName, setNewName] = useState("");
   const [showNewInput, setShowNewInput] = useState(false);
+  const [renamingName, setRenamingName] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleCreate = () => {
@@ -43,11 +47,36 @@ export default function ResumeSidebar({
     e.target.value = "";
   };
 
-  const handleDelete = async (name: string, e: React.MouseEvent) => {
+  const handleDelete = async (name: string, e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!window.confirm(`Delete "${name}"?`)) return;
     await deleteResume(name);
     onRefresh();
+  };
+
+  const startRename = (name: string, e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    setRenamingName(name);
+    setRenameValue(name);
+  };
+
+  const commitRename = async () => {
+    const newName = renameValue.trim();
+    if (!newName || !renamingName) { cancelRename(); return; }
+    if (newName === renamingName) { cancelRename(); return; }
+    try {
+      await renameResume(renamingName, newName);
+      onRename(renamingName, newName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Rename failed");
+    }
+    setRenamingName(null);
+    setRenameValue("");
+  };
+
+  const cancelRename = () => {
+    setRenamingName(null);
+    setRenameValue("");
   };
 
   return (
@@ -64,32 +93,83 @@ export default function ResumeSidebar({
           <p className="text-gray-500 text-xs px-4 py-3">No resumes yet. Create or upload one.</p>
         )}
         {resumes.map((name) => (
-          <button
+          <div
             key={name}
-            onClick={() => onSelect(name)}
-            className={`w-full text-left px-4 py-2.5 flex items-center justify-between group transition-colors ${
+            className={`group w-full flex items-center gap-1 px-3 py-2 transition-colors cursor-pointer ${
               activeResume === name
                 ? "bg-indigo-600 text-white"
                 : "text-gray-300 hover:bg-gray-800"
             }`}
+            onClick={() => renamingName !== name && onSelect(name)}
           >
-            <span className="text-sm truncate flex items-center gap-2">
-              <ChevronRight
-                size={12}
-                className={activeResume === name ? "opacity-100" : "opacity-0 group-hover:opacity-50"}
-              />
-              {name}
-            </span>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => handleDelete(name, e)}
-              onKeyDown={(e) => e.key === "Enter" && handleDelete(name, e as never)}
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-opacity"
-            >
-              <Trash2 size={13} />
-            </span>
-          </button>
+            <ChevronRight
+              size={12}
+              className={`flex-shrink-0 ${activeResume === name ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`}
+            />
+
+            {renamingName === name ? (
+              /* Inline rename input */
+              <div className="flex flex-1 items-center gap-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") cancelRename();
+                  }}
+                  className="flex-1 min-w-0 bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded border border-indigo-500 focus:outline-none"
+                />
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={commitRename}
+                  onKeyDown={(e) => e.key === "Enter" && commitRename()}
+                  className="text-green-400 hover:text-green-300 flex-shrink-0"
+                  title="Confirm rename"
+                >
+                  <Check size={13} />
+                </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={cancelRename}
+                  onKeyDown={(e) => e.key === "Enter" && cancelRename()}
+                  className="text-gray-400 hover:text-white flex-shrink-0"
+                  title="Cancel"
+                >
+                  <X size={13} />
+                </span>
+              </div>
+            ) : (
+              /* Normal row */
+              <>
+                <span className="flex-1 text-sm truncate min-w-0">{name}</span>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 flex-shrink-0">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => startRename(name, e)}
+                    onKeyDown={(e) => e.key === "Enter" && startRename(name, e)}
+                    className="text-gray-400 hover:text-indigo-300 transition-colors"
+                    title="Rename"
+                  >
+                    <Pencil size={12} />
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => handleDelete(name, e)}
+                    onKeyDown={(e) => e.key === "Enter" && handleDelete(name, e)}
+                    className="text-gray-400 hover:text-red-400 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 size={12} />
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
         ))}
       </div>
 

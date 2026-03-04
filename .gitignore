@@ -51,3 +51,6 @@ Thumbs.db
 
 # Resume files
 backend/resumes/
+
+# Candidate knowledge base (personal info)
+backend/KNOWLEDGE.md

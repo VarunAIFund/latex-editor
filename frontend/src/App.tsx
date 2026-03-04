@@ -322,24 +322,28 @@ export default function App() {
             </div>
 
             {/* Editor body */}
-            <div className="flex-1 min-h-0">
-              {diff ? (
-                <LatexEditor
-                  diffMode={true}
-                  original={diff.original}
-                  suggested={diff.suggested}
-                />
-              ) : (
-                <>
-                  {latex !== undefined && (
-                    <LatexEditor value={latex} onChange={handleLatexChange} />
-                  )}
-                  {!activeResume && !latex && (
-                    <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-                      Select or create a resume from the sidebar
-                    </div>
-                  )}
-                </>
+            <div className="flex-1 min-h-0 relative">
+              {/* Normal editor — always mounted so undo history survives accept */}
+              <div className={`absolute inset-0 ${diff ? "invisible" : "visible"}`}>
+                {latex !== undefined && (
+                  <LatexEditor value={latex} onChange={handleLatexChange} />
+                )}
+                {!activeResume && !latex && (
+                  <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                    Select or create a resume from the sidebar
+                  </div>
+                )}
+              </div>
+
+              {/* Diff viewer — overlays the editor only during review */}
+              {diff && (
+                <div className="absolute inset-0">
+                  <LatexEditor
+                    diffMode={true}
+                    original={diff.original}
+                    suggested={diff.suggested}
+                  />
+                </div>
               )}
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Save, Mail, RefreshCw, FileDown, Check, X } from "lucide-react";
+import { Save, Mail, RefreshCw, FileDown, Check, X, Sparkles } from "lucide-react";
 import ResumeSidebar from "./components/ResumeSidebar";
 import LatexEditor from "./components/LatexEditor";
 import PdfPreview from "./components/PdfPreview";
@@ -83,6 +83,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [diff, setDiff] = useState<{ original: string; suggested: string } | null>(null);
   const [showCoverLetter, setShowCoverLetter] = useState(false);
+  const [showAIPanel, setShowAIPanel] = useState(true);
   // Cache the pre-diff PDF so we can restore it on reject
   const preDiffPdfRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -245,6 +246,19 @@ export default function App() {
             )}
 
             <button
+              onClick={() => setShowAIPanel((v) => !v)}
+              disabled={!!diff}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                showAIPanel
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                  : "bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white"
+              }`}
+            >
+              <Sparkles size={13} />
+              AI Edit
+            </button>
+
+            <button
               onClick={() => setShowCoverLetter(true)}
               disabled={!latex}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:bg-gray-700 text-white text-xs font-medium transition-colors disabled:cursor-not-allowed"
@@ -341,7 +355,7 @@ export default function App() {
         </div>
 
         {/* AI Panel */}
-        {(activeResume || latex) && !diff && (
+        {(activeResume || latex) && !diff && showAIPanel && (
           <AIPanel latex={latex} onSuggestion={handleAISuggestion} />
         )}
       </div>

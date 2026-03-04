@@ -24,11 +24,11 @@ export async function compileLatex(latex: string): Promise<CompileResult> {
   return res.json();
 }
 
-export async function aiEdit(latex: string, prompt: string): Promise<AIEditResult> {
+export async function aiEdit(latex: string, prompt: string, images: string[] = []): Promise<AIEditResult> {
   const res = await fetch(`${BASE}/ai/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ latex, prompt }),
+    body: JSON.stringify({ latex, prompt, images }),
   });
   if (!res.ok) {
     const err = await res.json();

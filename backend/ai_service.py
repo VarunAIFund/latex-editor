@@ -34,15 +34,26 @@ Generate a complete, compilable LaTeX document for a cover letter that:
 Use a clean, professional LaTeX letter class or article class. Return ONLY the raw LaTeX source — no explanations, no markdown code fences, no extra text.{_KNOWLEDGE_BLOCK}"""
 
 
-async def ai_edit_latex(latex: str, prompt: str) -> str:
+async def ai_edit_latex(latex: str, prompt: str, images: list[str] | None = None) -> str:
+    text_part = f"Here is the current LaTeX resume:\n\n{latex}\n\nInstruction: {prompt}"
+
+    if images:
+        # Build a multimodal content list with all pasted/uploaded images
+        content: list[dict] = [{"type": "text", "text": text_part}]
+        for data_url in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": data_url, "detail": "high"},
+            })
+        user_message: dict = {"role": "user", "content": content}
+    else:
+        user_message = {"role": "user", "content": text_part}
+
     response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": EDIT_SYSTEM},
-            {
-                "role": "user",
-                "content": f"Here is the current LaTeX resume:\n\n{latex}\n\nInstruction: {prompt}",
-            },
+            user_message,
         ],
         temperature=0.2,
     )

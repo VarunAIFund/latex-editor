@@ -37,6 +37,7 @@ class CompileResponse(BaseModel):
 class AIEditRequest(BaseModel):
     latex: str
     prompt: str
+    images: list[str] = []  # list of data URLs: "data:image/png;base64,..."
 
 class AIEditResponse(BaseModel):
     suggested_latex: str
@@ -75,7 +76,7 @@ async def compile_route(req: CompileRequest):
 async def ai_edit_route(req: AIEditRequest):
     if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
-    suggested = await ai_service.ai_edit_latex(req.latex, req.prompt)
+    suggested = await ai_service.ai_edit_latex(req.latex, req.prompt, req.images)
     return AIEditResponse(suggested_latex=suggested)
 
 

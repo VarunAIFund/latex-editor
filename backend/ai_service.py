@@ -69,12 +69,25 @@ _EDIT_TOOL = {
 
 
 # ── Main chat function ─────────────────────────────────────────────────────────
+SUPPORTED_MODELS = [
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-thinking",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "o4-mini",
+    "o3-mini",
+]
+
 async def ai_chat(
     latex: str,
     prompt: str,
     images: list[str] | None = None,
     history: list[dict] | None = None,
     use_knowledge_base: bool = True,
+    model: str = "gpt-4o",
 ) -> dict:
     """
     Returns a dict:
@@ -101,13 +114,14 @@ async def ai_chat(
         user_message,
     ]
 
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        tools=[_EDIT_TOOL],
-        tool_choice="auto",
-        temperature=0.3,
-    )
+    # o-series models don't support temperature or tool_choice="auto"
+    _model = model if model in SUPPORTED_MODELS else "gpt-4o"
+    create_kwargs: dict = dict(model=_model, messages=messages, tools=[_EDIT_TOOL])
+    if not _model.startswith("o"):
+        create_kwargs["temperature"] = 0.3
+        create_kwargs["tool_choice"] = "auto"
+
+    response = await client.chat.completions.create(**create_kwargs)
 
     choice = response.choices[0]
     msg = choice.message

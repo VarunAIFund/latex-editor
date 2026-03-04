@@ -41,6 +41,7 @@ class AIEditRequest(BaseModel):
     images: list[str] = []          # data URLs: "data:image/png;base64,..."
     history: list[dict] = []        # prior OpenAI message dicts
     use_knowledge_base: bool = True
+    model: str = "gpt-4o"
 
 class AIEditResponse(BaseModel):
     type: str                          # "message" | "edit"
@@ -85,6 +86,11 @@ class ResumeResponse(BaseModel):
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
+@app.get("/models")
+async def list_models():
+    return {"models": ai_service.SUPPORTED_MODELS}
+
+
 @app.post("/compile", response_model=CompileResponse)
 async def compile_route(req: CompileRequest):
     pdf_b64, error = compiler.compile_latex(req.latex)
@@ -96,7 +102,7 @@ async def ai_edit_route(req: AIEditRequest):
     if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
     result = await ai_service.ai_chat(
-        req.latex, req.prompt, req.images, req.history, req.use_knowledge_base
+        req.latex, req.prompt, req.images, req.history, req.use_knowledge_base, req.model
     )
     return AIEditResponse(**result)
 

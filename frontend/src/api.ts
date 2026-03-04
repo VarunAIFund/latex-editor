@@ -26,17 +26,25 @@ export async function compileLatex(latex: string): Promise<CompileResult> {
   return res.json();
 }
 
+export async function listModels(): Promise<string[]> {
+  const res = await fetch(`${BASE}/models`);
+  if (!res.ok) return ["gpt-4o", "gpt-4o-mini"];
+  const data = await res.json();
+  return data.models as string[];
+}
+
 export async function aiEdit(
   latex: string,
   prompt: string,
   images: string[] = [],
   history: { role: string; content: string }[] = [],
   useKnowledgeBase: boolean = true,
+  model: string = "gpt-4o",
 ): Promise<AIEditResult> {
   const res = await fetch(`${BASE}/ai/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ latex, prompt, images, history, use_knowledge_base: useKnowledgeBase }),
+    body: JSON.stringify({ latex, prompt, images, history, use_knowledge_base: useKnowledgeBase, model }),
   });
   if (!res.ok) {
     const err = await res.json();

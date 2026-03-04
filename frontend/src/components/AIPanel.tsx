@@ -14,7 +14,7 @@ import {
   Trash2,
   MessageSquare,
 } from "lucide-react";
-import { aiEdit, listChatThreads, getChatThread, saveChatThread, deleteChatThread } from "../api";
+import { aiEdit, listModels, listChatThreads, getChatThread, saveChatThread, deleteChatThread } from "../api";
 import type { ChatThreadSummary } from "../api";
 import * as pdfjsLib from "pdfjs-dist";
 
@@ -117,11 +117,22 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
+  const [model, setModel] = useState("gpt-4o");
+  const [availableModels, setAvailableModels] = useState<string[]>([
+    "gpt-5", "gpt-5-mini", "gpt-5-thinking", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o4-mini", "o3-mini",
+  ]);
   const [pdfAttaching, setPdfAttaching] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const activeResumeRef = useRef(resumeName);
+
+  // ── Load available models once on mount ──────────────────────────────────────
+  useEffect(() => {
+    listModels().then((models) => {
+      if (models.length) setAvailableModels(models);
+    });
+  }, []);
 
   // ── Load thread list when resume changes ─────────────────────────────────────
   useEffect(() => {
@@ -334,7 +345,7 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
     });
 
     try {
-      const result = await aiEdit(latex, trimmed, currentImages, historyForApi, useKnowledgeBase);
+      const result = await aiEdit(latex, trimmed, currentImages, historyForApi, useKnowledgeBase, model);
 
       if (activeResumeRef.current !== resumeAtSubmit) return;
 
@@ -383,19 +394,34 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
             </span>
           )}
         </div>
-        <button
-          onClick={() => setUseKnowledgeBase((v) => !v)}
-          title={useKnowledgeBase ? "Knowledge base ON" : "Knowledge base OFF"}
-          className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors flex-shrink-0 ${
-            useKnowledgeBase
-              ? "bg-indigo-900/50 border-indigo-600 text-indigo-300 hover:bg-indigo-800/50"
-              : "bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400"
-          }`}
-        >
-          <Database size={11} />
-          <span>Knowledge Base</span>
-          <span className={`w-2 h-2 rounded-full ${useKnowledgeBase ? "bg-indigo-400" : "bg-gray-600"}`} />
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Model selector */}
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-gray-500 transition-colors"
+            title="Select model"
+          >
+            {availableModels.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+
+          {/* KB toggle */}
+          <button
+            onClick={() => setUseKnowledgeBase((v) => !v)}
+            title={useKnowledgeBase ? "Knowledge base ON" : "Knowledge base OFF"}
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              useKnowledgeBase
+                ? "bg-indigo-900/50 border-indigo-600 text-indigo-300 hover:bg-indigo-800/50"
+                : "bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400"
+            }`}
+          >
+            <Database size={11} />
+            <span>KB</span>
+            <span className={`w-2 h-2 rounded-full ${useKnowledgeBase ? "bg-indigo-400" : "bg-gray-600"}`} />
+          </button>
+        </div>
       </div>
 
       {/* Body: thread list + chat */}

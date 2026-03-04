@@ -49,5 +49,5 @@ Thumbs.db
 # PDFs (generated output — comment out if you want to track them)
 # *.pdf
 
-# Compiled resume output
-backend/resumes/*.pdf
+# Resume files
+backend/resumes/

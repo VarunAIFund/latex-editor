@@ -78,11 +78,21 @@ export default function App() {
         const result = await compileLatex(src);
         setPdfBase64(result.pdf_base64);
         setCompileError(result.error);
+        if (result.pdf_base64 && activeTab === "resume") {
+          const pages = await countPdfPages(result.pdf_base64);
+          if (pages > 1) {
+            setOverOnePage(true);
+            analyzeLayout(result.pdf_base64).then(setBulletAnalysis);
+          } else {
+            setOverOnePage(false);
+            setBulletAnalysis(null);
+          }
+        }
       } finally {
         setCompiling(false);
       }
     }, 1200);
-  }, []);
+  }, [activeTab]);
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
 

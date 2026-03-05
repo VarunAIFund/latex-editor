@@ -14,6 +14,7 @@ import {
   Trash2,
   MessageSquare,
   Mail,
+  Zap,
 } from "lucide-react";
 import { aiEdit, listModels, listChatThreads, getChatThread, saveChatThread, deleteChatThread } from "../api";
 import type { ChatThreadSummary } from "../api";
@@ -107,6 +108,46 @@ async function renderAllPdfPagesToPng(base64: string): Promise<string[]> {
   return results;
 }
 
+// ── Quick prompts ──────────────────────────────────────────────────────────────
+
+const QUICK_PROMPTS: { label: string; color: string; text: string }[] = [
+  {
+    label: "ATS Optimize",
+    color: "text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/40",
+    text: `I want my resume to pass ATS filters and still read well to human recruiters. Based on this job description:
+
+[paste job description here]
+
+Can you optimize my resume content to include relevant keywords and phrases from the posting in a natural way?`,
+  },
+  {
+    label: "Tailor Resume",
+    color: "text-indigo-300 border-indigo-700/60 hover:bg-indigo-900/40",
+    text: `Please tailor my resume for this role. Here's the job description:
+
+[paste job description here]
+
+Keep the formatting intact and only change content that strengthens my fit for this specific role.`,
+  },
+  {
+    label: "Cover Letter",
+    color: "text-purple-300 border-purple-700/60 hover:bg-purple-900/40",
+    text: `Write me a tailored cover letter for this role. Here's the job description:
+
+[paste job description here]`,
+  },
+  {
+    label: "Tailor + Cover",
+    color: "text-amber-300 border-amber-700/60 hover:bg-amber-900/40",
+    text: `Based on this job description, please:
+1. Tailor my resume for the role
+2. Write a cover letter
+
+Job description:
+[paste job description here]`,
+  },
+];
+
 // ── Pending edit card ──────────────────────────────────────────────────────────
 
 function EditCard({
@@ -190,6 +231,7 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
   const [pdfAttaching, setPdfAttaching] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const activeProjectRef = useRef(projectName);
 
@@ -333,6 +375,22 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     await addImages(Array.from(e.target.files ?? []));
     e.target.value = "";
+  };
+
+  // ── Quick prompt insertion ─────────────────────────────────────────────────────
+  const insertQuickPrompt = (text: string) => {
+    if (!activeThreadId) startNewThread();
+    setPrompt(text);
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      // Move cursor to the placeholder so user can type immediately
+      const pos = text.indexOf("[paste job description here]");
+      if (pos !== -1) {
+        ta.setSelectionRange(pos, pos + "[paste job description here]".length);
+      }
+    }, 50);
   };
 
   const attachPdf = async () => {
@@ -626,6 +684,21 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
             </div>
           )}
 
+          {/* Quick prompt chips */}
+          <div className="flex items-center gap-1.5 px-4 py-1.5 border-t border-gray-800 flex-shrink-0 overflow-x-auto">
+            <Zap size={11} className="text-gray-600 flex-shrink-0" />
+            {QUICK_PROMPTS.map((qp) => (
+              <button
+                key={qp.label}
+                onClick={() => insertQuickPrompt(qp.text)}
+                disabled={loading}
+                className={`flex-shrink-0 text-[11px] px-2.5 py-1 rounded-full border bg-transparent transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${qp.color}`}
+              >
+                {qp.label}
+              </button>
+            ))}
+          </div>
+
           {/* Input row */}
           <div className="flex gap-2 items-end px-4 py-2 border-t border-gray-800 flex-shrink-0">
             <button onClick={() => fileRef.current?.click()} disabled={loading} title="Attach image"
@@ -641,6 +714,7 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
             </button>
 
             <textarea
+              ref={textareaRef}
               rows={2}
               placeholder={
                 !activeThreadId

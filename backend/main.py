@@ -84,6 +84,9 @@ class UpsertThreadRequest(BaseModel):
     created_at: str
     messages: list[dict] = []
 
+class AnalyzeLayoutRequest(BaseModel):
+    pdf_base64: str
+
 class ProjectListResponse(BaseModel):
     names: list[str]
 
@@ -104,6 +107,17 @@ async def list_models():
 async def compile_route(req: CompileRequest):
     pdf_b64, error = compiler.compile_latex(req.latex)
     return CompileResponse(pdf_base64=pdf_b64, error=error)
+
+
+@app.post("/analyze-layout")
+async def analyze_layout_route(req: AnalyzeLayoutRequest):
+    import base64 as _b64
+    try:
+        pdf_bytes = _b64.b64decode(req.pdf_base64)
+        bullets = compiler.analyze_bullet_lines(pdf_bytes)
+        return {"bullets": bullets}
+    except Exception as e:
+        return {"bullets": [], "error": str(e)}
 
 
 # ─── AI routes ─────────────────────────────────────────────────────────────────

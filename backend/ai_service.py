@@ -33,7 +33,8 @@ Strict rules on when to call each tool:
 - Call `edit_cover_letter` ONLY when the user explicitly mentions "cover letter" or asks you to write/update/tailor the cover letter. NEVER touch the cover letter unless directly asked.
 - If the user asks to tailor the resume (with no mention of a cover letter), call ONLY `edit_resume`.
 - If just chatting or brainstorming — respond conversationally, no tool calls.
-- When you call a tool, include a short conversational message explaining what you did."""
+- When you call a tool, include a short conversational message explaining what you did.
+- The resume must fit on exactly one page. When editing, do not increase total content length unless you explicitly remove an equivalent amount elsewhere."""
 
 
 def _build_system(use_knowledge_base: bool) -> str:
@@ -135,9 +136,19 @@ async def ai_chat(
         if cover_letter_latex.strip()
         else "\n\n---\n**cover_letter.tex:** (empty — not written yet)"
     )
+    non_empty_lines = len([l for l in resume_latex.splitlines() if l.strip()])
+    if non_empty_lines > 60:
+        page_hint = (
+            f"\n\n[Resume size: ~{non_empty_lines} non-empty lines — likely close to or over 1 page. "
+            f"Be conservative: only add content if you remove an equal amount.]"
+        )
+    else:
+        page_hint = (
+            f"\n\n[Resume size: ~{non_empty_lines} non-empty lines — fits on 1 page. Keep it that way.]"
+        )
     text_part = (
         f"**resume.tex (current):**\n```latex\n{resume_latex}\n```"
-        f"{cl_section}\n\n---\n{prompt}"
+        f"{cl_section}\n\n---\n{prompt}{page_hint}"
     )
 
     if images:

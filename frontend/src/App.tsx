@@ -4,8 +4,16 @@ import ResumeSidebar from "./components/ResumeSidebar";
 import LatexEditor from "./components/LatexEditor";
 import PdfPreview from "./components/PdfPreview";
 import AIPanel from "./components/AIPanel";
+import type { AIpanelHandle } from "./components/AIPanel";
 import MarginsPanel from "./components/MarginsPanel";
-import { compileLatex, listProjects, loadProject, saveResume, saveCoverLetter, createProject } from "./api";
+import { compileLatex, listProjects, loadProject, saveResume, saveCoverLetter, createProject, analyzeLayout } from "./api";
+import type { BulletInfo } from "./components/AIPanel";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.mjs",
+  import.meta.url,
+).toString();
 
 type ActiveTab = "resume" | "cover_letter";
 type DiffTarget = "resume" | "cover_letter";
@@ -41,6 +49,11 @@ export default function App() {
 
   // AI panel visibility
   const [showAIPanel, setShowAIPanel] = useState(true);
+
+  // One-page guard
+  const [overOnePage, setOverOnePage] = useState(false);
+  const [bulletAnalysis, setBulletAnalysis] = useState<BulletInfo[] | null>(null);
+  const aiPanelRef = useRef<AIpanelHandle>(null);
 
   // Debounce refs
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,6 +126,8 @@ export default function App() {
     setResumeLatex(data.resume);
     setCoverLetterLatex(data.cover_letter);
     setDiff(null);
+    setOverOnePage(false);
+    setBulletAnalysis(null);
     setActiveTab("resume");
     triggerCompile(data.resume);
   };
@@ -156,6 +171,48 @@ export default function App() {
     if (activeProject === oldName) setActiveProject(newName);
   };
 
+  // ── Page-count helper ───────────────────────────────────────────────────────
+
+  async function countPdfPages(base64: string): Promise<number> {
+    const url = `data:application/pdf;base64,${base64}`;
+    const buf = await (await fetch(url)).arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    return pdf.numPages;
+  }
+
+  // ── Auto-trim apply (called by AIPanel loop) ─────────────────────────────────
+
+  const handleAutoTrimApply = async (
+    latex: string,
+  ): Promise<{ pageCount: number; bulletAnalysis: BulletInfo[] }> => {
+    setResumeLatex(latex);
+    if (activeProject) triggerAutoSave(latex, activeProject, "resume");
+    setCompiling(true);
+    try {
+      const result = await compileLatex(latex);
+      setPdfBase64(result.pdf_base64);
+      setCompileError(result.error);
+      let pageCount = 1;
+      let newAnalysis: BulletInfo[] = [];
+      if (result.pdf_base64) {
+        pageCount = await countPdfPages(result.pdf_base64);
+        newAnalysis = await analyzeLayout(result.pdf_base64);
+        setBulletAnalysis(newAnalysis);
+        setOverOnePage(pageCount > 1);
+      }
+      return { pageCount, bulletAnalysis: newAnalysis };
+    } finally {
+      setCompiling(false);
+    }
+  };
+
+  // ── Auto-trim handler ────────────────────────────────────────────────────────
+
+  const handleAutoTrim = () => {
+    setShowAIPanel(true);
+    aiPanelRef.current?.triggerAutoTrim();
+  };
+
   // ── AI suggestion → diff view ───────────────────────────────────────────────
 
   const handleAISuggestion = async (target: DiffTarget, original: string, suggested: string) => {
@@ -173,8 +230,10 @@ export default function App() {
     }
   };
 
-  const handleAcceptDiff = () => {
+  const handleAcceptDiff = async () => {
     if (!diff) return;
+    setOverOnePage(false);
+
     if (diff.target === "resume") {
       setResumeLatex(diff.suggested);
       if (activeProject) triggerAutoSave(diff.suggested, activeProject, "resume");
@@ -182,12 +241,33 @@ export default function App() {
       setCoverLetterLatex(diff.suggested);
       if (activeProject) triggerAutoSave(diff.suggested, activeProject, "cover_letter");
     }
-    triggerCompile(diff.suggested);
     setDiff(null);
+
+    setCompiling(true);
+    try {
+      const result = await compileLatex(diff.suggested);
+      setPdfBase64(result.pdf_base64);
+      setCompileError(result.error);
+      if (result.pdf_base64 && diff.target === "resume") {
+        const pages = await countPdfPages(result.pdf_base64);
+        if (pages > 1) {
+          setOverOnePage(true);
+          analyzeLayout(result.pdf_base64).then(setBulletAnalysis);
+        }
+      }
+    } finally {
+      setCompiling(false);
+    }
   };
 
   const handleRejectDiff = () => {
+    // Restore the latex content to before the diff (important for auto-trim diffs
+    // where the latex was already applied during the loop)
+    if (diff?.target === "resume") setResumeLatex(diff.original);
+    else if (diff?.target === "cover_letter") setCoverLetterLatex(diff.original);
     setDiff(null);
+    setOverOnePage(false);
+    setBulletAnalysis(null);
     if (preDiffPdfRef.current !== null) {
       setPdfBase64(preDiffPdfRef.current);
       setCompileError(null);
@@ -341,6 +421,25 @@ export default function App() {
               )}
             </div>
 
+            {/* Over-page banner */}
+            {overOnePage && !diff && activeTab === "resume" && (
+              <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/40 border-b border-amber-700/50 text-amber-300 text-xs flex-shrink-0">
+                <span className="flex-1">Resume is over 1 page after the last edit.</span>
+                <button
+                  onClick={handleAutoTrim}
+                  className="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors"
+                >
+                  Trim in chat
+                </button>
+                <button
+                  onClick={() => setOverOnePage(false)}
+                  className="text-amber-500 hover:text-amber-300 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             {/* Editor body */}
             <div className="flex-1 min-h-0 relative">
               {/* Normal editor — always mounted to preserve undo history */}
@@ -376,11 +475,14 @@ export default function App() {
         {/* AI Panel */}
         {(activeProject || activeLatex) && !diff && showAIPanel && (
           <AIPanel
+            ref={aiPanelRef}
             resumeLatex={resumeLatex}
             coverLetterLatex={coverLetterLatex}
             pdfBase64={pdfBase64}
             projectName={activeProject}
             onSuggestion={handleAISuggestion}
+            bulletAnalysis={bulletAnalysis}
+            onAutoTrimApply={handleAutoTrimApply}
           />
         )}
       </div>

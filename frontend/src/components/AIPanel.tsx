@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from "react";
 import {
   Sparkles,
   Loader2,
@@ -45,12 +45,25 @@ export type ChatMessage =
       clEditAccepted?: boolean | null;
     };
 
+export interface AIpanelHandle {
+  triggerAutoTrim: () => void;
+}
+
+export interface BulletInfo {
+  section: string;
+  role: string;
+  snippet: string;
+  line_count: number;
+}
+
 interface Props {
   resumeLatex: string;
   coverLetterLatex: string;
   pdfBase64: string | null;
   projectName: string | null;
   onSuggestion: (target: "resume" | "cover_letter", original: string, suggested: string) => void;
+  bulletAnalysis?: BulletInfo[] | null;
+  onAutoTrimApply?: (latex: string) => Promise<{ pageCount: number; bulletAnalysis: BulletInfo[] }>;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -110,6 +123,29 @@ async function renderAllPdfPagesToPng(base64: string): Promise<string[]> {
 
 // ── Quick prompts ──────────────────────────────────────────────────────────────
 
+const TRIM_PROMPT_BASE = `My resume is slightly over one page. Make ONE micro-edit to reduce its length. Use this priority order — stop at the first that applies:
+
+1. Find the bullet whose continuation line has the fewest words (i.e. it barely spills onto a second line). Rewrite that bullet to be ~10 words shorter while keeping all key facts — the goal is to make it fit in one fewer rendered line.
+2. If no bullet can be shortened without losing key info, find a phrase that can be tightened (e.g. "in order to" → "to", "responsible for building" → "built", "was able to" → drop entirely).
+3. Only as a last resort: remove the single least-impactful bullet from a role older than 2 years.
+
+Rules: do NOT remove entire sections. Do NOT change formatting, spacing, or margins. Return the full resume with only this one change.`;
+
+function buildTrimPrompt(analysis: BulletInfo[] | null): string {
+  const multiLine = (analysis ?? []).filter((b) => b.line_count > 1);
+  if (multiLine.length === 0) return TRIM_PROMPT_BASE;
+  const lines = multiLine
+    .map((b) => {
+      const loc = [b.section, b.role].filter(Boolean).join(" / ");
+      return `- [${b.line_count} rendered lines${loc ? ", " + loc : ""}] "${b.snippet.slice(0, 70)}…"`;
+    })
+    .join("\n");
+  return (
+    TRIM_PROMPT_BASE +
+    `\n\nThese specific bullets are wrapping to multiple rendered lines in the PDF — prioritize shortening one of these first:\n${lines}`
+  );
+}
+
 const QUICK_PROMPTS: { label: string; color: string; text: string }[] = [
   {
     label: "ATS Optimize",
@@ -145,6 +181,11 @@ Keep the formatting intact and only change content that strengthens my fit for t
 
 Job description:
 [paste job description here]`,
+  },
+  {
+    label: "Trim to 1 page",
+    color: "text-orange-300 border-orange-700/60 hover:bg-orange-900/40",
+    text: TRIM_PROMPT_BASE,
   },
 ];
 
@@ -212,7 +253,10 @@ function EditCard({
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, projectName, onSuggestion }: Props) {
+const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
+  { resumeLatex, coverLetterLatex, pdfBase64, projectName, onSuggestion, bulletAnalysis, onAutoTrimApply }: Props,
+  ref,
+) {
   const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -229,6 +273,7 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
     "gpt-5", "gpt-5-mini", "gpt-5-thinking", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o4-mini", "o3-mini",
   ]);
   const [pdfAttaching, setPdfAttaching] = useState(false);
+  const [trimming, setTrimming] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -503,6 +548,126 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
     }
   };
 
+  // ── Auto-trim loop ────────────────────────────────────────────────────────────
+  const runTrimLoop = async () => {
+    if (trimming || loading || !onAutoTrimApply) return;
+    setTrimming(true);
+
+    // Reuse existing thread or create one
+    let threadId = activeThreadId;
+    let createdAt = activeCreatedAt;
+    if (!threadId) {
+      threadId = generateId();
+      createdAt = nowIso();
+      setActiveThreadId(threadId);
+      setActiveCreatedAt(createdAt);
+      setThreads((prev) => [
+        { id: threadId!, title: "Auto-trim", created_at: createdAt, message_count: 0 },
+        ...prev,
+      ]);
+    }
+
+    const MAX_ROUNDS = 4;
+    const preTrimLatex = resumeLatex; // snapshot before any changes
+    let currentLatex = resumeLatex;
+    let currentAnalysis = bulletAnalysis ?? null;
+    let history: ChatMessage[] = [...chatHistory];
+    let anyEditMade = false;
+
+    const toApiHistory = (msgs: ChatMessage[]) =>
+      msgs.flatMap<{ role: string; content: string }>((msg) => {
+        if (msg.role === "user") return [{ role: "user", content: msg.text }];
+        const parts: string[] = [msg.text];
+        if (msg.role === "assistant") {
+          if (msg.pendingEdit) parts.push(`[Resume edit: ${msg.pendingEdit.explanation}]`);
+          if (msg.pendingCLEdit) parts.push(`[Cover letter edit: ${msg.pendingCLEdit.explanation}]`);
+        }
+        return [{ role: "assistant", content: parts.join(" ") }];
+      });
+
+    for (let round = 1; round <= MAX_ROUNDS; round++) {
+      const prompt = buildTrimPrompt(currentAnalysis);
+
+      // Concise display label so the chat stays readable
+      const displayText =
+        round === 1
+          ? "Auto-trim: making resume fit to 1 page…"
+          : `Auto-trim round ${round}: still slightly over, adjusting…`;
+      const userMsg: ChatMessage = { role: "user", text: displayText };
+      history = [...history, userMsg];
+      setChatHistory(history);
+
+      // Build API history from everything before this user message
+      const historyForApi = toApiHistory(history.slice(0, -1));
+
+      let result;
+      try {
+        result = await aiEdit(
+          currentLatex, coverLetterLatex, prompt, [],
+          historyForApi, useKnowledgeBase, model,
+        );
+      } catch (e) {
+        const errMsg: ChatMessage = {
+          role: "assistant",
+          text: e instanceof Error ? `Error: ${e.message}` : "Something went wrong during auto-trim.",
+        };
+        history = [...history, errMsg];
+        setChatHistory(history);
+        break;
+      }
+
+      if (!result.suggested_resume) {
+        // AI couldn't find a cut
+        const doneMsg: ChatMessage = {
+          role: "assistant",
+          text: result.message || "No further changes needed — resume is as compact as possible.",
+        };
+        history = [...history, doneMsg];
+        setChatHistory(history);
+        persistThread(history, threadId, createdAt);
+        break;
+      }
+
+      // Auto-accept the edit (editAccepted: true — shows green "changes applied" card)
+      const assistantMsg: ChatMessage = {
+        role: "assistant",
+        text: result.message,
+        pendingEdit: { suggestedLatex: result.suggested_resume, explanation: result.message },
+        editAccepted: true,
+      };
+      history = [...history, assistantMsg];
+      setChatHistory(history);
+
+      // Compile + layout check
+      const { pageCount, bulletAnalysis: newAnalysis } = await onAutoTrimApply(result.suggested_resume);
+      currentLatex = result.suggested_resume;
+      currentAnalysis = newAnalysis;
+      anyEditMade = true;
+
+      const statusMsg: ChatMessage = {
+        role: "assistant",
+        text:
+          pageCount <= 1
+            ? "Resume fits on 1 page now. All done!"
+            : round < MAX_ROUNDS
+            ? `Still slightly over — making another small adjustment (round ${round + 1} of ${MAX_ROUNDS})…`
+            : "Reached maximum rounds. Resume may still be slightly over — you can run again or adjust manually.",
+      };
+      history = [...history, statusMsg];
+      setChatHistory(history);
+      persistThread(history, threadId, createdAt);
+
+      if (pageCount <= 1) break;
+    }
+
+    // Show a diff of pre-trim vs post-trim so the user can review and revert if needed
+    if (anyEditMade && currentLatex !== preTrimLatex) {
+      onSuggestion("resume", preTrimLatex, currentLatex);
+    }
+
+    setTrimming(false);
+  };
+
   // ── Resizable panel ──────────────────────────────────────────────────────────
   const [panelHeight, setPanelHeight] = useState(380);
   const dragStartY = useRef<number | null>(null);
@@ -524,6 +689,18 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
+
+  // ── Imperative handle ─────────────────────────────────────────────────────────
+  useImperativeHandle(ref, () => ({
+    triggerAutoTrim: () => {
+      if (onAutoTrimApply) {
+        runTrimLoop();
+      } else {
+        // Fallback: populate textarea for manual send
+        insertQuickPrompt(buildTrimPrompt(bulletAnalysis ?? null));
+      }
+    },
+  }), [bulletAnalysis, resumeLatex, onAutoTrimApply]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -694,6 +871,17 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
                 </div>
               </div>
             )}
+            {trimming && (
+              <div className="flex gap-2 justify-start">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-700 flex items-center justify-center">
+                  <Sparkles size={11} className="text-amber-200" />
+                </div>
+                <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl rounded-tl-sm px-3 py-2 flex items-center gap-2">
+                  <Loader2 size={13} className="text-amber-400 animate-spin" />
+                  <span className="text-xs text-amber-300">Auto-trimming…</span>
+                </div>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
@@ -721,7 +909,7 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
               <button
                 key={qp.label}
                 onClick={() => insertQuickPrompt(qp.text)}
-                disabled={loading}
+                disabled={loading || trimming}
                 className={`flex-shrink-0 text-[11px] px-2.5 py-1 rounded-full border bg-transparent transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${qp.color}`}
               >
                 {qp.label}
@@ -731,13 +919,13 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
 
           {/* Input row */}
           <div className="flex gap-2 items-end px-4 py-2 border-t border-gray-800 flex-shrink-0">
-            <button onClick={() => fileRef.current?.click()} disabled={loading} title="Attach image"
+            <button onClick={() => fileRef.current?.click()} disabled={loading || trimming} title="Attach image"
               className="flex-shrink-0 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50">
               <Paperclip size={14} />
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileInput} />
 
-            <button onClick={attachPdf} disabled={loading || pdfAttaching || !pdfBase64}
+            <button onClick={attachPdf} disabled={loading || trimming || pdfAttaching || !pdfBase64}
               title="Attach all PDF pages as images"
               className="flex-shrink-0 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {pdfAttaching ? <Loader2 size={14} className="animate-spin" /> : <FileImage size={14} />}
@@ -747,7 +935,9 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
               ref={textareaRef}
               rows={2}
               placeholder={
-                !activeThreadId
+                trimming
+                  ? "Auto-trimming in progress…"
+                  : !activeThreadId
                   ? "Start a new chat to begin…"
                   : hasPendingEdit >= 0
                   ? 'Type "yes" to apply, or keep chatting…'
@@ -759,12 +949,12 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
                 if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(prompt); }
               }}
               onPaste={handlePaste}
-              disabled={loading}
+              disabled={loading || trimming}
               className="flex-1 bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none placeholder-gray-500 disabled:opacity-50 resize-none"
             />
 
             <button onClick={() => submit(prompt)}
-              disabled={loading || (!prompt.trim() && !images.length)}
+              disabled={loading || trimming || (!prompt.trim() && !images.length)}
               className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-medium transition-colors disabled:cursor-not-allowed">
               {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             </button>
@@ -775,4 +965,6 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
       </div>
     </div>
   );
-}
+});
+
+export default AIPanel;

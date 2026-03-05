@@ -7,6 +7,28 @@ export interface CompileResult {
   error: string | null;
 }
 
+// ── Layout analysis ───────────────────────────────────────────────────────────
+
+// BulletInfo is defined in AIPanel.tsx to avoid circular imports
+export type { BulletInfo } from "./components/AIPanel";
+
+export async function analyzeLayout(
+  pdfBase64: string,
+): Promise<import("./components/AIPanel").BulletInfo[]> {
+  try {
+    const res = await fetch(`${BASE}/analyze-layout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pdf_base64: pdfBase64 }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.bullets ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function compileLatex(latex: string): Promise<CompileResult> {
   const res = await fetch(`${BASE}/compile`, {
     method: "POST",

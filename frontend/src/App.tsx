@@ -81,12 +81,14 @@ export default function App() {
   const [compileError, setCompileError] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedRecently, setSavedRecently] = useState(false);
   const [diff, setDiff] = useState<{ original: string; suggested: string } | null>(null);
   const [showCoverLetter, setShowCoverLetter] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(true);
   // Cache the pre-diff PDF so we can restore it on reject
   const preDiffPdfRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchResumes = useCallback(async () => {
     const names = await listResumes();
@@ -111,9 +113,21 @@ export default function App() {
     }, 1200);
   }, []);
 
+  const triggerAutoSave = useCallback((src: string, name: string) => {
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+    autoSaveRef.current = setTimeout(async () => {
+      setSaving(true);
+      await saveResume(name, src);
+      setSaving(false);
+      setSavedRecently(true);
+      setTimeout(() => setSavedRecently(false), 2000);
+    }, 2000);
+  }, []);
+
   const handleLatexChange = (val: string) => {
     setLatex(val);
     triggerCompile(val);
+    if (activeResume) triggerAutoSave(val, activeResume);
   };
 
   const handleSelect = async (name: string) => {
@@ -183,8 +197,8 @@ export default function App() {
     if (!diff) return;
     setLatex(diff.suggested);
     setDiff(null);
-    // PDF already shows the accepted version — just trigger a fresh compile
     triggerCompile(diff.suggested);
+    if (activeResume) triggerAutoSave(diff.suggested, activeResume);
   };
 
   const handleRejectDiff = () => {
@@ -284,10 +298,14 @@ export default function App() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white text-xs font-medium transition-colors"
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-white text-xs font-medium transition-colors ${
+                savedRecently
+                  ? "bg-emerald-600 hover:bg-emerald-500"
+                  : "bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800"
+              }`}
             >
               <Save size={13} />
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : savedRecently ? "Saved ✓" : "Save"}
             </button>
           </div>
         </header>

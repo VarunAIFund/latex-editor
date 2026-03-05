@@ -22,6 +22,10 @@ export default function App() {
   // Project list + active project
   const [projects, setProjects] = useState<string[]>([]);
   const [activeProject, setActiveProject] = useState<string | null>(null);
+  const [pinnedProjects, setPinnedProjects] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pinnedProjects") ?? "[]"); }
+    catch { return []; }
+  });
 
   // Per-project file content
   const [resumeLatex, setResumeLatex] = useState("");
@@ -64,6 +68,14 @@ export default function App() {
   const fetchProjects = useCallback(async () => {
     const names = await listProjects();
     setProjects(names);
+  }, []);
+
+  const handleTogglePin = useCallback((name: string) => {
+    setPinnedProjects((prev) => {
+      const next = prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name];
+      localStorage.setItem("pinnedProjects", JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   useEffect(() => { fetchProjects(); }, [fetchProjects]);
@@ -305,6 +317,8 @@ export default function App() {
       <ResumeSidebar
         resumes={projects}
         activeResume={activeProject}
+        pinnedResumes={pinnedProjects}
+        onTogglePin={handleTogglePin}
         onSelect={handleSelect}
         onNew={handleNew}
         onRename={handleRename}

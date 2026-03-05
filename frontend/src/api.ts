@@ -66,6 +66,7 @@ export async function aiEdit(
   history: { role: string; content: string }[] = [],
   useKnowledgeBase: boolean = true,
   model: string = "gpt-4o",
+  signal?: AbortSignal,
 ): Promise<AIEditResult> {
   const res = await fetch(`${BASE}/ai/edit`, {
     method: "POST",
@@ -79,6 +80,7 @@ export async function aiEdit(
       use_knowledge_base: useKnowledgeBase,
       model,
     }),
+    signal,
   });
   if (!res.ok) {
     const err = await res.json();

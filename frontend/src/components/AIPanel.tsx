@@ -10,6 +10,7 @@ import {
   Sparkles,
   Loader2,
   Send,
+  Square,
   Paperclip,
   X,
   FileImage,
@@ -347,10 +348,12 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
   ]);
   const [pdfAttaching, setPdfAttaching] = useState(false);
   const [trimming, setTrimming] = useState(false);
+  const [trimmingRound, setTrimmingRound] = useState<{ current: number; max: number } | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const activeProjectRef = useRef(projectName);
 
   // ── Load available models ─────────────────────────────────────────────────────
@@ -608,6 +611,8 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
     const currentImages = [...images];
     const projectAtSubmit = activeProjectRef.current;
     const threadAtSubmit = threadId;
+    const ac = new AbortController();
+    abortControllerRef.current = ac;
 
     const userMsg: ChatMessage = {
       role: "user",
@@ -643,6 +648,7 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
         historyForApi,
         useKnowledgeBase,
         model,
+        ac.signal,
       );
 
       if (activeProjectRef.current !== projectAtSubmit) return;
@@ -682,11 +688,15 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
       setChatHistory(finalHistory);
       persistThread(finalHistory, threadAtSubmit, createdAt);
     } catch (e: unknown) {
-      if (activeProjectRef.current === projectAtSubmit) {
+      if (e instanceof Error && e.name === "AbortError") {
+        // User cancelled — remove the pending user message from history
+        setChatHistory(chatHistory);
+      } else if (activeProjectRef.current === projectAtSubmit) {
         setError(e instanceof Error ? e.message : "Something went wrong");
         setChatHistory(historyWithUser);
       }
     } finally {
+      abortControllerRef.current = null;
       if (activeProjectRef.current === projectAtSubmit) setLoading(false);
     }
   };
@@ -695,6 +705,9 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
   const runTrimLoop = async () => {
     if (trimming || loading || !onAutoTrimApply) return;
     setTrimming(true);
+    setTrimmingRound(null);
+    const ac = new AbortController();
+    abortControllerRef.current = ac;
 
     // Reuse existing thread or create one
     let threadId = activeThreadId;
@@ -736,19 +749,11 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
       });
 
     for (let round = 1; round <= MAX_ROUNDS; round++) {
+      setTrimmingRound({ current: round, max: MAX_ROUNDS });
       const prompt = buildTrimPrompt(currentAnalysis);
 
-      // Concise display label so the chat stays readable
-      const displayText =
-        round === 1
-          ? "Auto-trim: making resume fit to 1 page…"
-          : `Auto-trim round ${round}: still slightly over, adjusting…`;
-      const userMsg: ChatMessage = { role: "user", text: displayText };
-      history = [...history, userMsg];
-      setChatHistory(history);
-
-      // Build API history from everything before this user message
-      const historyForApi = toApiHistory(history.slice(0, -1));
+      // Build API history from existing history (no extra user label message added)
+      const historyForApi = toApiHistory(history);
 
       let result;
       try {
@@ -760,8 +765,10 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
           historyForApi,
           useKnowledgeBase,
           model,
+          ac.signal,
         );
       } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") break;
         const errMsg: ChatMessage = {
           role: "assistant",
           text:
@@ -809,20 +816,21 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
       currentAnalysis = newAnalysis;
       anyEditMade = true;
 
-      const statusMsg: ChatMessage = {
-        role: "assistant",
-        text:
-          pageCount <= 1
-            ? "Resume fits on 1 page now. All done!"
-            : round < MAX_ROUNDS
-              ? `Still slightly over — making another small adjustment (round ${round + 1} of ${MAX_ROUNDS})…`
-              : "Reached maximum rounds. Resume may still be slightly over — you can run again or adjust manually.",
-      };
-      history = [...history, statusMsg];
-      setChatHistory(history);
+      const isLastRound = pageCount <= 1 || round === MAX_ROUNDS;
+      if (isLastRound) {
+        const finalMsg: ChatMessage = {
+          role: "assistant",
+          text:
+            pageCount <= 1
+              ? `Resume fits on 1 page now. Done after ${round} round${round > 1 ? "s" : ""}.`
+              : `Reached maximum rounds (${MAX_ROUNDS}). Resume may still be slightly over — you can run again or adjust manually.`,
+        };
+        history = [...history, finalMsg];
+        setChatHistory(history);
+        persistThread(history, threadId, createdAt);
+        break;
+      }
       persistThread(history, threadId, createdAt);
-
-      if (pageCount <= 1) break;
     }
 
     // Show a diff of pre-trim vs post-trim so the user can review and revert if needed
@@ -830,7 +838,9 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
       onSuggestion("resume", preTrimLatex, currentLatex);
     }
 
+    abortControllerRef.current = null;
     setTrimming(false);
+    setTrimmingRound(null);
   };
 
   // ── Resizable panel ──────────────────────────────────────────────────────────
@@ -1079,7 +1089,11 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
                 </div>
                 <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl rounded-tl-sm px-3 py-2 flex items-center gap-2">
                   <Loader2 size={13} className="text-amber-400 animate-spin" />
-                  <span className="text-xs text-amber-300">Auto-trimming…</span>
+                  <span className="text-xs text-amber-300">
+                    {trimmingRound
+                      ? `Auto-trimming — round ${trimmingRound.current} of ${trimmingRound.max}…`
+                      : "Auto-trimming…"}
+                  </span>
                 </div>
               </div>
             )}
@@ -1181,19 +1195,23 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
               className="flex-1 bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none placeholder-gray-500 disabled:opacity-50 resize-none"
             />
 
-            <button
-              onClick={() => submit(prompt)}
-              disabled={
-                loading || trimming || (!prompt.trim() && !images.length)
-              }
-              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-medium transition-colors disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
+            {loading || trimming ? (
+              <button
+                onClick={() => abortControllerRef.current?.abort()}
+                title="Stop generation"
+                className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+              >
+                <Square size={13} className="fill-white" />
+              </button>
+            ) : (
+              <button
+                onClick={() => submit(prompt)}
+                disabled={!prompt.trim() && !images.length}
+                className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-medium transition-colors disabled:cursor-not-allowed"
+              >
                 <Send size={14} />
-              )}
-            </button>
+              </button>
+            )}
           </div>
 
           {error && (

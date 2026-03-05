@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
-import { FolderOpen, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X, Pin, PinOff } from "lucide-react";
 import { deleteResume, renameResume } from "../api";
 
 interface Props {
   resumes: string[];
   activeResume: string | null;
+  pinnedResumes: string[];
+  onTogglePin: (name: string) => void;
   onSelect: (name: string) => void;
   onNew: (name: string, latex?: string) => void;
   onRename: (oldName: string, newName: string) => void;
@@ -14,6 +16,8 @@ interface Props {
 export default function ResumeSidebar({
   resumes,
   activeResume,
+  pinnedResumes,
+  onTogglePin,
   onSelect,
   onNew,
   onRename,
@@ -92,85 +96,109 @@ export default function ResumeSidebar({
         {resumes.length === 0 && (
           <p className="text-gray-500 text-xs px-4 py-3">No projects yet. Create one below.</p>
         )}
-        {resumes.map((name) => (
-          <div
-            key={name}
-            className={`group w-full flex items-center gap-1 px-3 py-2 transition-colors cursor-pointer ${
-              activeResume === name
-                ? "bg-indigo-600 text-white"
-                : "text-gray-300 hover:bg-gray-800"
-            }`}
-            onClick={() => renamingName !== name && onSelect(name)}
-          >
-            <ChevronRight
-              size={12}
-              className={`flex-shrink-0 ${activeResume === name ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`}
-            />
-
-            {renamingName === name ? (
-              /* Inline rename input */
-              <div className="flex flex-1 items-center gap-1 min-w-0" onClick={(e) => e.stopPropagation()}>
-                <input
-                  autoFocus
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRename();
-                    if (e.key === "Escape") cancelRename();
-                  }}
-                  className="flex-1 min-w-0 bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded border border-indigo-500 focus:outline-none"
+        {[...resumes]
+          .sort((a, b) => {
+            const aP = pinnedResumes.includes(a);
+            const bP = pinnedResumes.includes(b);
+            if (aP && !bP) return -1;
+            if (!aP && bP) return 1;
+            return 0;
+          })
+          .map((name) => {
+            const isPinned = pinnedResumes.includes(name);
+            return (
+              <div
+                key={name}
+                className={`group w-full flex items-center gap-1 px-3 py-2 transition-colors cursor-pointer ${
+                  activeResume === name
+                    ? "bg-indigo-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+                onClick={() => renamingName !== name && onSelect(name)}
+              >
+                <ChevronRight
+                  size={12}
+                  className={`flex-shrink-0 ${activeResume === name ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`}
                 />
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={commitRename}
-                  onKeyDown={(e) => e.key === "Enter" && commitRename()}
-                  className="text-green-400 hover:text-green-300 flex-shrink-0"
-                  title="Confirm rename"
-                >
-                  <Check size={13} />
-                </span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={cancelRename}
-                  onKeyDown={(e) => e.key === "Enter" && cancelRename()}
-                  className="text-gray-400 hover:text-white flex-shrink-0"
-                  title="Cancel"
-                >
-                  <X size={13} />
-                </span>
+
+                {renamingName === name ? (
+                  /* Inline rename input */
+                  <div className="flex flex-1 items-center gap-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRename();
+                        if (e.key === "Escape") cancelRename();
+                      }}
+                      className="flex-1 min-w-0 bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded border border-indigo-500 focus:outline-none"
+                    />
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={commitRename}
+                      onKeyDown={(e) => e.key === "Enter" && commitRename()}
+                      className="text-green-400 hover:text-green-300 flex-shrink-0"
+                      title="Confirm rename"
+                    >
+                      <Check size={13} />
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={cancelRename}
+                      onKeyDown={(e) => e.key === "Enter" && cancelRename()}
+                      className="text-gray-400 hover:text-white flex-shrink-0"
+                      title="Cancel"
+                    >
+                      <X size={13} />
+                    </span>
+                  </div>
+                ) : (
+                  /* Normal row */
+                  <>
+                    {isPinned && (
+                      <Pin size={10} className="flex-shrink-0 text-amber-400 -rotate-45" />
+                    )}
+                    <span className="flex-1 text-sm truncate min-w-0">{name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 flex-shrink-0">
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); onTogglePin(name); }}
+                        onKeyDown={(e) => e.key === "Enter" && onTogglePin(name)}
+                        className={`transition-colors ${isPinned ? "text-amber-400 hover:text-amber-300" : "text-gray-400 hover:text-amber-400"}`}
+                        title={isPinned ? "Unpin" : "Pin to top"}
+                      >
+                        {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => startRename(name, e)}
+                        onKeyDown={(e) => e.key === "Enter" && startRename(name, e)}
+                        className="text-gray-400 hover:text-indigo-300 transition-colors"
+                        title="Rename"
+                      >
+                        <Pencil size={12} />
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => handleDelete(name, e)}
+                        onKeyDown={(e) => e.key === "Enter" && handleDelete(name, e)}
+                        className="text-gray-400 hover:text-red-400 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={12} />
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
-            ) : (
-              /* Normal row */
-              <>
-                <span className="flex-1 text-sm truncate min-w-0">{name}</span>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 flex-shrink-0">
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => startRename(name, e)}
-                    onKeyDown={(e) => e.key === "Enter" && startRename(name, e)}
-                    className="text-gray-400 hover:text-indigo-300 transition-colors"
-                    title="Rename"
-                  >
-                    <Pencil size={12} />
-                  </span>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => handleDelete(name, e)}
-                    onKeyDown={(e) => e.key === "Enter" && handleDelete(name, e)}
-                    className="text-gray-400 hover:text-red-400 transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={12} />
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        ))}
+            );
+          })}
       </div>
 
       <div className="p-3 border-t border-gray-700 space-y-2">

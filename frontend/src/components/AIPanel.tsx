@@ -13,6 +13,7 @@ import {
   Plus,
   Trash2,
   MessageSquare,
+  Mail,
 } from "lucide-react";
 import { aiEdit, listModels, listChatThreads, getChatThread, saveChatThread, deleteChatThread } from "../api";
 import type { ChatThreadSummary } from "../api";
@@ -32,13 +33,23 @@ export type PendingEdit = {
 
 export type ChatMessage =
   | { role: "user"; text: string; images?: string[] }
-  | { role: "assistant"; text: string; pendingEdit?: PendingEdit; editAccepted?: boolean | null };
+  | {
+      role: "assistant";
+      text: string;
+      /** Pending resume.tex edit */
+      pendingEdit?: PendingEdit;
+      editAccepted?: boolean | null;
+      /** Pending cover_letter.tex edit */
+      pendingCLEdit?: PendingEdit;
+      clEditAccepted?: boolean | null;
+    };
 
 interface Props {
-  latex: string;
+  resumeLatex: string;
+  coverLetterLatex: string;
   pdfBase64: string | null;
-  resumeName: string | null;
-  onSuggestion: (original: string, suggested: string) => void;
+  projectName: string | null;
+  onSuggestion: (target: "resume" | "cover_letter", original: string, suggested: string) => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -48,13 +59,8 @@ const YES_PHRASES = new Set([
   "apply", "apply it", "do it", "looks good", "go ahead", "accept",
 ]);
 
-function generateId(): string {
-  return crypto.randomUUID();
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
+function generateId(): string { return crypto.randomUUID(); }
+function nowIso(): string { return new Date().toISOString(); }
 
 function threadTitle(messages: ChatMessage[]): string {
   const first = messages.find((m) => m.role === "user");
@@ -101,17 +107,77 @@ async function renderAllPdfPagesToPng(base64: string): Promise<string[]> {
   return results;
 }
 
+// ── Pending edit card ──────────────────────────────────────────────────────────
+
+function EditCard({
+  target,
+  accepted,
+  onAccept,
+  onReject,
+}: {
+  target: "resume" | "cover_letter";
+  accepted: boolean | null | undefined;
+  onAccept: () => void;
+  onReject: () => void;
+}) {
+  const isCL = target === "cover_letter";
+  return (
+    <div className={`rounded-xl border text-xs overflow-hidden ${
+      accepted === true
+        ? "border-green-700/50 bg-green-950/30"
+        : accepted === false
+        ? "border-gray-700 bg-gray-800/40 opacity-60"
+        : isCL
+        ? "border-purple-600/50 bg-purple-950/30"
+        : "border-indigo-600/50 bg-indigo-950/40"
+    }`}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
+        {isCL
+          ? <Mail size={12} className={accepted === true ? "text-green-400" : "text-purple-400"} />
+          : <GitCompare size={12} className={accepted === true ? "text-green-400" : "text-indigo-400"} />
+        }
+        <span className={`font-medium ${
+          accepted === true ? "text-green-300" : isCL ? "text-purple-300" : "text-indigo-300"
+        }`}>
+          {accepted === true
+            ? `${isCL ? "Cover letter" : "Resume"} changes applied`
+            : accepted === false
+            ? "Changes rejected"
+            : `Proposed ${isCL ? "cover_letter.tex" : "resume.tex"} changes — review in editor`}
+        </span>
+      </div>
+      {accepted === null && (
+        <div className="flex gap-2 px-3 py-2">
+          <button
+            onClick={onAccept}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white font-medium transition-colors ${
+              isCL ? "bg-purple-700 hover:bg-purple-600" : "bg-indigo-600 hover:bg-indigo-500"
+            }`}
+          >
+            <Check size={11} /> Accept
+          </button>
+          <button
+            onClick={onReject}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium transition-colors"
+          >
+            <XCircle size={11} /> Reject
+          </button>
+          <span className="ml-auto self-center text-gray-500 italic">or type "yes"</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: Props) {
-  // Thread list
+export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, projectName, onSuggestion }: Props) {
   const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [activeCreatedAt, setActiveCreatedAt] = useState<string>("");
   const [threadsLoading, setThreadsLoading] = useState(false);
 
-  // Input state
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,33 +191,31 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
 
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const activeResumeRef = useRef(resumeName);
+  const activeProjectRef = useRef(projectName);
 
-  // ── Load available models once on mount ──────────────────────────────────────
+  // ── Load available models ─────────────────────────────────────────────────────
   useEffect(() => {
-    listModels().then((models) => {
-      if (models.length) setAvailableModels(models);
-    });
+    listModels().then((models) => { if (models.length) setAvailableModels(models); });
   }, []);
 
-  // ── Load thread list when resume changes ─────────────────────────────────────
+  // ── Reload threads when project changes ───────────────────────────────────────
   useEffect(() => {
-    activeResumeRef.current = resumeName;
+    activeProjectRef.current = projectName;
     setLoading(false);
     setError(null);
     setActiveThreadId(null);
     setChatHistory([]);
     setThreads([]);
 
-    if (!resumeName) return;
+    if (!projectName) return;
     setThreadsLoading(true);
-    listChatThreads(resumeName).then((list) => {
+    listChatThreads(projectName).then((list) => {
       setThreads(list);
       setThreadsLoading(false);
     });
-  }, [resumeName]);
+  }, [projectName]);
 
-  // ── Auto-scroll chat ──────────────────────────────────────────────────────────
+  // ── Auto-scroll ───────────────────────────────────────────────────────────────
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, loading]);
@@ -164,17 +228,13 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
     setActiveCreatedAt(now);
     setChatHistory([]);
     setError(null);
-    // Optimistically add to sidebar
-    setThreads((prev) => [
-      { id, title: "New chat", created_at: now, message_count: 0 },
-      ...prev,
-    ]);
+    setThreads((prev) => [{ id, title: "New chat", created_at: now, message_count: 0 }, ...prev]);
   };
 
   const selectThread = async (threadId: string) => {
-    if (!resumeName || threadId === activeThreadId) return;
+    if (!projectName || threadId === activeThreadId) return;
     setError(null);
-    const full = await getChatThread(resumeName, threadId);
+    const full = await getChatThread(projectName, threadId);
     if (!full) return;
     setActiveThreadId(full.id);
     setActiveCreatedAt(full.created_at);
@@ -183,95 +243,96 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
 
   const deleteThread = async (threadId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!resumeName) return;
-    await deleteChatThread(resumeName, threadId);
+    if (!projectName) return;
+    await deleteChatThread(projectName, threadId);
     setThreads((prev) => prev.filter((t) => t.id !== threadId));
-    if (activeThreadId === threadId) {
-      setActiveThreadId(null);
-      setChatHistory([]);
-    }
+    if (activeThreadId === threadId) { setActiveThreadId(null); setChatHistory([]); }
   };
 
-  // ── Persist current thread ────────────────────────────────────────────────────
+  // ── Persist thread ────────────────────────────────────────────────────────────
   const persistThread = useCallback(
     async (messages: ChatMessage[], threadId: string, createdAt: string) => {
-      if (!resumeName || !threadId) return;
+      if (!projectName || !threadId) return;
       const title = threadTitle(messages);
-      await saveChatThread(resumeName, { id: threadId, title, created_at: createdAt, messages });
+      await saveChatThread(projectName, { id: threadId, title, created_at: createdAt, messages });
       setThreads((prev) =>
-        prev.map((t) =>
-          t.id === threadId
-            ? { ...t, title, message_count: messages.length }
-            : t
-        )
+        prev.map((t) => t.id === threadId ? { ...t, title, message_count: messages.length } : t)
       );
     },
-    [resumeName]
+    [projectName]
   );
 
   // ── Pending edit helpers ──────────────────────────────────────────────────────
-  const pendingEditIndex = (() => {
+  const hasPendingEdit = (() => {
     for (let i = chatHistory.length - 1; i >= 0; i--) {
       const m = chatHistory[i];
-      if (m.role === "assistant" && m.pendingEdit && m.editAccepted === null) return i;
+      if (m.role === "assistant") {
+        if ((m.pendingEdit && m.editAccepted === null) || (m.pendingCLEdit && m.clEditAccepted === null)) return i;
+      }
     }
     return -1;
   })();
 
   const acceptEdit = useCallback(
-    (idx: number, history: ChatMessage[]) => {
+    (idx: number, history: ChatMessage[], target: "resume" | "cover_letter") => {
       const msg = history[idx];
-      if (msg.role !== "assistant" || !msg.pendingEdit) return history;
-      onSuggestion(latex, msg.pendingEdit.suggestedLatex);
-      return history.map((m, i) =>
-        i === idx && m.role === "assistant" ? { ...m, editAccepted: true } : m
-      );
+      if (msg.role !== "assistant") return history;
+      if (target === "resume" && msg.pendingEdit) {
+        onSuggestion("resume", resumeLatex, msg.pendingEdit.suggestedLatex);
+        return history.map((m, i) =>
+          i === idx && m.role === "assistant" ? { ...m, editAccepted: true } : m
+        );
+      }
+      if (target === "cover_letter" && msg.pendingCLEdit) {
+        onSuggestion("cover_letter", coverLetterLatex, msg.pendingCLEdit.suggestedLatex);
+        return history.map((m, i) =>
+          i === idx && m.role === "assistant" ? { ...m, clEditAccepted: true } : m
+        );
+      }
+      return history;
     },
-    [latex, onSuggestion]
+    [resumeLatex, coverLetterLatex, onSuggestion]
   );
 
-  const handleAcceptEdit = (idx: number) => {
-    const updated = acceptEdit(idx, chatHistory);
+  const handleAcceptEdit = (idx: number, target: "resume" | "cover_letter") => {
+    const updated = acceptEdit(idx, chatHistory, target);
     setChatHistory(updated);
     if (activeThreadId) persistThread(updated, activeThreadId, activeCreatedAt);
   };
 
-  const handleRejectEdit = (idx: number) => {
-    const updated = chatHistory.map((m, i) =>
-      i === idx && m.role === "assistant" ? { ...m, editAccepted: false } : m
-    );
+  const handleRejectEdit = (idx: number, target: "resume" | "cover_letter") => {
+    const updated = chatHistory.map((m, i) => {
+      if (i !== idx || m.role !== "assistant") return m;
+      return target === "resume"
+        ? { ...m, editAccepted: false }
+        : { ...m, clEditAccepted: false };
+    });
     setChatHistory(updated);
     if (activeThreadId) persistThread(updated, activeThreadId, activeCreatedAt);
   };
 
   // ── Image helpers ─────────────────────────────────────────────────────────────
   const addImages = useCallback(async (files: File[]) => {
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (!imageFiles.length) return;
-    const dataUrls = await Promise.all(imageFiles.map(readFileAsDataUrl));
-    setImages((prev) => [...prev, ...dataUrls]);
+    const imgs = files.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) return;
+    const urls = await Promise.all(imgs.map(readFileAsDataUrl));
+    setImages((prev) => [...prev, ...urls]);
   }, []);
 
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      const items = Array.from(e.clipboardData.items);
-      const imageItems = items.filter((i) => i.type.startsWith("image/"));
-      if (!imageItems.length) return;
+      const items = Array.from(e.clipboardData.items).filter((i) => i.type.startsWith("image/"));
+      if (!items.length) return;
       e.preventDefault();
-      const files = imageItems.map((i) => i.getAsFile()).filter(Boolean) as File[];
+      const files = items.map((i) => i.getAsFile()).filter(Boolean) as File[];
       await addImages(files);
     },
     [addImages]
   );
 
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    await addImages(files);
+    await addImages(Array.from(e.target.files ?? []));
     e.target.value = "";
-  };
-
-  const removeImage = (idx: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const attachPdf = async () => {
@@ -292,7 +353,6 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
     const trimmed = p.trim();
     if (!trimmed || loading) return;
 
-    // Ensure there's an active thread
     let threadId = activeThreadId;
     let createdAt = activeCreatedAt;
     if (!threadId) {
@@ -300,19 +360,23 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
       createdAt = nowIso();
       setActiveThreadId(threadId);
       setActiveCreatedAt(createdAt);
-      setThreads((prev) => [
-        { id: threadId!, title: "New chat", created_at: createdAt, message_count: 0 },
-        ...prev,
-      ]);
+      setThreads((prev) => [{ id: threadId!, title: "New chat", created_at: createdAt, message_count: 0 }, ...prev]);
     }
 
-    // "yes" shortcut — accept pending edit
-    if (pendingEditIndex >= 0 && YES_PHRASES.has(trimmed.toLowerCase())) {
-      const afterAccept = acceptEdit(pendingEditIndex, chatHistory);
+    // "yes" shortcut — accept all pending edits
+    if (hasPendingEdit >= 0 && YES_PHRASES.has(trimmed.toLowerCase())) {
+      let afterAccept = chatHistory;
+      const msg = chatHistory[hasPendingEdit];
+      if (msg.role === "assistant") {
+        if (msg.pendingEdit && msg.editAccepted === null)
+          afterAccept = acceptEdit(hasPendingEdit, afterAccept, "resume");
+        if (msg.pendingCLEdit && msg.clEditAccepted === null)
+          afterAccept = acceptEdit(hasPendingEdit, afterAccept, "cover_letter");
+      }
       const withConfirm: ChatMessage[] = [
         ...afterAccept,
         { role: "user", text: trimmed },
-        { role: "assistant", text: "Done! The changes have been applied to the editor." },
+        { role: "assistant", text: "Done! Changes applied to the editor." },
       ];
       setChatHistory(withConfirm);
       persistThread(withConfirm, threadId, createdAt);
@@ -323,7 +387,7 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
     setLoading(true);
     setError(null);
     const currentImages = [...images];
-    const resumeAtSubmit = activeResumeRef.current;
+    const projectAtSubmit = activeProjectRef.current;
     const threadAtSubmit = threadId;
 
     const userMsg: ChatMessage = {
@@ -338,45 +402,46 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
 
     const historyForApi = chatHistory.flatMap<{ role: string; content: string }>((msg) => {
       if (msg.role === "user") return [{ role: "user", content: msg.text }];
-      const content = msg.pendingEdit
-        ? `${msg.text} [Proposed edit: ${msg.pendingEdit.explanation}]`
-        : msg.text;
-      return [{ role: "assistant", content }];
+      const parts: string[] = [msg.text];
+      if (msg.pendingEdit) parts.push(`[Proposed resume edit: ${msg.pendingEdit.explanation}]`);
+      if (msg.pendingCLEdit) parts.push(`[Proposed cover letter edit: ${msg.pendingCLEdit.explanation}]`);
+      return [{ role: "assistant", content: parts.join(" ") }];
     });
 
     try {
-      const result = await aiEdit(latex, trimmed, currentImages, historyForApi, useKnowledgeBase, model);
+      const result = await aiEdit(
+        resumeLatex, coverLetterLatex, trimmed, currentImages,
+        historyForApi, useKnowledgeBase, model,
+      );
 
-      if (activeResumeRef.current !== resumeAtSubmit) return;
+      if (activeProjectRef.current !== projectAtSubmit) return;
 
-      let finalHistory: ChatMessage[];
-      if (result.type === "edit" && result.suggested_latex) {
-        finalHistory = [
-          ...historyWithUser,
-          {
-            role: "assistant",
-            text: result.message,
-            pendingEdit: { suggestedLatex: result.suggested_latex!, explanation: result.message },
-            editAccepted: null,
-          },
-        ];
-      } else {
-        finalHistory = [
-          ...historyWithUser,
-          { role: "assistant", text: result.message },
-        ];
-      }
+      const hasResumeEdit = (result.type === "edit" || result.type === "edit_and_cover_letter") && result.suggested_resume;
+      const hasCLEdit = (result.type === "edit_cover_letter" || result.type === "edit_and_cover_letter") && result.suggested_cover_letter;
+
+      const assistantMsg: ChatMessage = {
+        role: "assistant",
+        text: result.message,
+        ...(hasResumeEdit ? {
+          pendingEdit: { suggestedLatex: result.suggested_resume!, explanation: result.message },
+          editAccepted: null,
+        } : {}),
+        ...(hasCLEdit ? {
+          pendingCLEdit: { suggestedLatex: result.suggested_cover_letter!, explanation: result.message },
+          clEditAccepted: null,
+        } : {}),
+      };
+
+      const finalHistory: ChatMessage[] = [...historyWithUser, assistantMsg];
       setChatHistory(finalHistory);
       persistThread(finalHistory, threadAtSubmit, createdAt);
     } catch (e: unknown) {
-      if (activeResumeRef.current === resumeAtSubmit) {
+      if (activeProjectRef.current === projectAtSubmit) {
         setError(e instanceof Error ? e.message : "Something went wrong");
-        setChatHistory(chatHistory);
+        setChatHistory(historyWithUser);
       }
     } finally {
-      if (activeResumeRef.current === resumeAtSubmit) {
-        setLoading(false);
-      }
+      if (activeProjectRef.current === projectAtSubmit) setLoading(false);
     }
   };
 
@@ -388,26 +453,22 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles size={13} className="text-indigo-400 flex-shrink-0" />
           <span className="text-xs text-indigo-300 font-medium uppercase tracking-wider flex-shrink-0">AI Assistant</span>
-          {resumeName && (
+          {projectName && (
             <span className="text-xs text-gray-500 truncate">
-              — editing <span className="text-gray-300 font-medium">{resumeName}</span>
+              — <span className="text-gray-300 font-medium">{projectName}</span>
             </span>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Model selector */}
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
             className="text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-gray-500 transition-colors"
-            title="Select model"
           >
             {availableModels.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-
-          {/* KB toggle */}
           <button
             onClick={() => setUseKnowledgeBase((v) => !v)}
             title={useKnowledgeBase ? "Knowledge base ON" : "Knowledge base OFF"}
@@ -424,7 +485,7 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
         </div>
       </div>
 
-      {/* Body: thread list + chat */}
+      {/* Body */}
       <div className="flex flex-1 min-h-0">
         {/* Thread sidebar */}
         <div className="w-44 flex-shrink-0 border-r border-gray-800 flex flex-col min-h-0">
@@ -463,7 +524,6 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
                   onClick={(e) => deleteThread(t.id, e)}
                   onKeyDown={(e) => e.key === "Enter" && deleteThread(t.id, e as never)}
                   className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
-                  title="Delete chat"
                 >
                   <Trash2 size={11} />
                 </span>
@@ -474,20 +534,16 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
 
         {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
             {!activeThreadId && (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
                 <MessageSquare size={24} className="text-gray-700" />
-                <p className="text-xs text-gray-500">
-                  Select a chat or start a new one
-                </p>
+                <p className="text-xs text-gray-500">Select a chat or start a new one</p>
               </div>
             )}
-
             {activeThreadId && chatHistory.length === 0 && !loading && (
               <p className="text-xs text-gray-500 text-center pt-4">
-                Chat with your resume assistant. Ask questions, request edits, or attach the PDF to inspect styling.
+                Ask to tailor the resume, generate a cover letter, or both at once.
               </p>
             )}
 
@@ -498,7 +554,6 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
                     <Sparkles size={11} className="text-indigo-200" />
                   </div>
                 )}
-
                 <div className="max-w-[82%] space-y-2">
                   <div
                     className={`rounded-xl px-3 py-2 text-sm ${
@@ -517,45 +572,24 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
                     )}
                   </div>
 
-                  {/* Pending edit card */}
+                  {/* Resume edit card */}
                   {msg.role === "assistant" && msg.pendingEdit && (
-                    <div
-                      className={`rounded-xl border text-xs overflow-hidden ${
-                        msg.editAccepted === true
-                          ? "border-green-700/50 bg-green-950/30"
-                          : msg.editAccepted === false
-                          ? "border-gray-700 bg-gray-800/40 opacity-60"
-                          : "border-indigo-600/50 bg-indigo-950/40"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-current/10">
-                        <GitCompare size={12} className={msg.editAccepted === true ? "text-green-400" : "text-indigo-400"} />
-                        <span className={`font-medium ${msg.editAccepted === true ? "text-green-300" : "text-indigo-300"}`}>
-                          {msg.editAccepted === true
-                            ? "Changes applied"
-                            : msg.editAccepted === false
-                            ? "Changes rejected"
-                            : "Proposed changes — review in editor"}
-                        </span>
-                      </div>
-                      {msg.editAccepted === null && (
-                        <div className="flex gap-2 px-3 py-2">
-                          <button
-                            onClick={() => handleAcceptEdit(idx)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
-                          >
-                            <Check size={11} /> Accept
-                          </button>
-                          <button
-                            onClick={() => handleRejectEdit(idx)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium transition-colors"
-                          >
-                            <XCircle size={11} /> Reject
-                          </button>
-                          <span className="ml-auto self-center text-gray-500 italic">or type "yes"</span>
-                        </div>
-                      )}
-                    </div>
+                    <EditCard
+                      target="resume"
+                      accepted={msg.editAccepted ?? null}
+                      onAccept={() => handleAcceptEdit(idx, "resume")}
+                      onReject={() => handleRejectEdit(idx, "resume")}
+                    />
+                  )}
+
+                  {/* Cover letter edit card */}
+                  {msg.role === "assistant" && msg.pendingCLEdit && (
+                    <EditCard
+                      target="cover_letter"
+                      accepted={msg.clEditAccepted ?? null}
+                      onAccept={() => handleAcceptEdit(idx, "cover_letter")}
+                      onReject={() => handleRejectEdit(idx, "cover_letter")}
+                    />
                   )}
                 </div>
               </div>
@@ -572,18 +606,17 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
                 </div>
               </div>
             )}
-
             <div ref={chatEndRef} />
           </div>
 
-          {/* Staged image thumbnails */}
+          {/* Staged images */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 px-4 py-1 border-t border-gray-800 flex-shrink-0">
               {images.map((src, idx) => (
                 <div key={idx} className="relative group">
                   <img src={src} alt="" className="h-12 w-12 object-cover rounded-lg border border-gray-700" />
                   <button
-                    onClick={() => removeImage(idx)}
+                    onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
                     className="absolute -top-1.5 -right-1.5 bg-gray-800 hover:bg-red-600 text-gray-400 hover:text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-all"
                   >
                     <X size={10} />
@@ -595,22 +628,15 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
 
           {/* Input row */}
           <div className="flex gap-2 items-end px-4 py-2 border-t border-gray-800 flex-shrink-0">
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={loading}
-              title="Attach image"
-              className="flex-shrink-0 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-            >
+            <button onClick={() => fileRef.current?.click()} disabled={loading} title="Attach image"
+              className="flex-shrink-0 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50">
               <Paperclip size={14} />
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileInput} />
 
-            <button
-              onClick={attachPdf}
-              disabled={loading || pdfAttaching || !pdfBase64}
+            <button onClick={attachPdf} disabled={loading || pdfAttaching || !pdfBase64}
               title="Attach all PDF pages as images"
-              className="flex-shrink-0 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+              className="flex-shrink-0 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {pdfAttaching ? <Loader2 size={14} className="animate-spin" /> : <FileImage size={14} />}
             </button>
 
@@ -619,28 +645,23 @@ export default function AIPanel({ latex, pdfBase64, resumeName, onSuggestion }: 
               placeholder={
                 !activeThreadId
                   ? "Start a new chat to begin…"
-                  : pendingEditIndex >= 0
+                  : hasPendingEdit >= 0
                   ? 'Type "yes" to apply, or keep chatting…'
-                  : "Ask anything or request an edit… Enter ↵ to send"
+                  : "Ask anything, request edits, or ask for a cover letter… Enter ↵ to send"
               }
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit(prompt);
-                }
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(prompt); }
               }}
               onPaste={handlePaste}
               disabled={loading}
               className="flex-1 bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-indigo-500 focus:outline-none placeholder-gray-500 disabled:opacity-50 resize-none"
             />
 
-            <button
-              onClick={() => submit(prompt)}
+            <button onClick={() => submit(prompt)}
               disabled={loading || (!prompt.trim() && !images.length)}
-              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-medium transition-colors disabled:cursor-not-allowed"
-            >
+              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-medium transition-colors disabled:cursor-not-allowed">
               {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             </button>
           </div>

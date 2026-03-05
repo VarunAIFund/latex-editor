@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { FileText, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X } from "lucide-react";
 import { deleteResume, renameResume } from "../api";
 
 interface Props {
@@ -40,7 +40,7 @@ export default function ResumeSidebar({
     reader.onload = () => {
       const latex = reader.result as string;
       const suggested = file.name.replace(/\.tex$/, "");
-      const name = window.prompt("Name this resume:", suggested) || suggested;
+      const name = window.prompt("Name this project:", suggested) || suggested;
       onNew(name, latex);
     };
     reader.readAsText(file);
@@ -83,14 +83,14 @@ export default function ResumeSidebar({
     <aside className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col h-full">
       <div className="p-4 border-b border-gray-700">
         <h2 className="text-white font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
-          <FileText size={14} />
-          Resume Library
+          <FolderOpen size={14} />
+          Projects
         </h2>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">
         {resumes.length === 0 && (
-          <p className="text-gray-500 text-xs px-4 py-3">No resumes yet. Create or upload one.</p>
+          <p className="text-gray-500 text-xs px-4 py-3">No projects yet. Create one below.</p>
         )}
         {resumes.map((name) => (
           <div
@@ -179,7 +179,7 @@ export default function ResumeSidebar({
             <input
               autoFocus
               type="text"
-              placeholder="Resume name…"
+              placeholder="Project name…"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
@@ -200,14 +200,14 @@ export default function ResumeSidebar({
             onClick={() => setShowNewInput(true)}
             className="w-full flex items-center gap-2 text-gray-400 hover:text-white text-xs py-1.5 px-2 rounded hover:bg-gray-800 transition-colors"
           >
-            <Plus size={13} /> New blank resume
+            <Plus size={13} /> New project
           </button>
         )}
         <button
           onClick={() => fileRef.current?.click()}
           className="w-full flex items-center gap-2 text-gray-400 hover:text-white text-xs py-1.5 px-2 rounded hover:bg-gray-800 transition-colors"
         >
-          <Upload size={13} /> Upload .tex template
+          <Upload size={13} /> Upload resume.tex
         </button>
         <input
           ref={fileRef}

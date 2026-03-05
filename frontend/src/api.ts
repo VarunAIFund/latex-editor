@@ -1,19 +1,9 @@
 const BASE = "http://localhost:8000";
 
+// ── Compile ───────────────────────────────────────────────────────────────────
+
 export interface CompileResult {
   pdf_base64: string | null;
-  error: string | null;
-}
-
-export interface AIEditResult {
-  type: "message" | "edit";
-  message: string;
-  suggested_latex: string | null;
-}
-
-export interface CoverLetterResult {
-  cover_letter_pdf_base64: string | null;
-  cover_letter_latex: string | null;
   error: string | null;
 }
 
@@ -26,6 +16,8 @@ export async function compileLatex(latex: string): Promise<CompileResult> {
   return res.json();
 }
 
+// ── Models ────────────────────────────────────────────────────────────────────
+
 export async function listModels(): Promise<string[]> {
   const res = await fetch(`${BASE}/models`);
   if (!res.ok) return ["gpt-4o", "gpt-4o-mini"];
@@ -33,8 +25,20 @@ export async function listModels(): Promise<string[]> {
   return data.models as string[];
 }
 
+// ── AI edit ───────────────────────────────────────────────────────────────────
+
+export interface AIEditResult {
+  /** "message" | "edit" | "edit_cover_letter" | "edit_and_cover_letter" */
+  type: string;
+  message: string;
+  suggested_resume: string | null;
+  suggested_cover_letter: string | null;
+  cover_letter_pdf_base64: string | null;
+}
+
 export async function aiEdit(
-  latex: string,
+  resumeLatex: string,
+  coverLetterLatex: string,
   prompt: string,
   images: string[] = [],
   history: { role: string; content: string }[] = [],
@@ -44,7 +48,15 @@ export async function aiEdit(
   const res = await fetch(`${BASE}/ai/edit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ latex, prompt, images, history, use_knowledge_base: useKnowledgeBase, model }),
+    body: JSON.stringify({
+      resume_latex: resumeLatex,
+      cover_letter_latex: coverLetterLatex,
+      prompt,
+      images,
+      history,
+      use_knowledge_base: useKnowledgeBase,
+      model,
+    }),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -53,11 +65,19 @@ export async function aiEdit(
   return res.json();
 }
 
+// ── Cover letter (modal) ──────────────────────────────────────────────────────
+
+export interface CoverLetterResult {
+  cover_letter_pdf_base64: string | null;
+  cover_letter_latex: string | null;
+  error: string | null;
+}
+
 export async function generateCoverLetter(
   resume_latex: string,
   job_title: string,
   company_name: string,
-  company_description: string
+  company_description: string,
 ): Promise<CoverLetterResult> {
   const res = await fetch(`${BASE}/ai/cover-letter`, {
     method: "POST",
@@ -71,29 +91,57 @@ export async function generateCoverLetter(
   return res.json();
 }
 
-export async function listResumes(): Promise<string[]> {
-  const res = await fetch(`${BASE}/resumes`);
-  const data = await res.json();
-  return data.names;
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+export interface ProjectData {
+  name: string;
+  resume: string;
+  cover_letter: string;
 }
 
-export async function loadResume(name: string): Promise<string> {
-  const res = await fetch(`${BASE}/resumes/${encodeURIComponent(name)}`);
-  if (!res.ok) throw new Error(`Resume '${name}' not found`);
+export async function listProjects(): Promise<string[]> {
+  const res = await fetch(`${BASE}/projects`);
   const data = await res.json();
-  return data.latex;
+  return data.names as string[];
 }
 
-export async function saveResume(name: string, latex: string): Promise<void> {
-  await fetch(`${BASE}/resumes/${encodeURIComponent(name)}`, {
+export async function loadProject(name: string): Promise<ProjectData> {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(name)}`);
+  if (!res.ok) throw new Error(`Project '${name}' not found`);
+  return res.json();
+}
+
+export async function createProject(name: string, resume?: string): Promise<ProjectData> {
+  const res = await fetch(`${BASE}/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ latex }),
+    body: JSON.stringify({ name, resume: resume ?? "" }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to create project");
+  }
+  return res.json();
+}
+
+export async function saveResume(name: string, content: string): Promise<void> {
+  await fetch(`${BASE}/projects/${encodeURIComponent(name)}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function saveCoverLetter(name: string, content: string): Promise<void> {
+  await fetch(`${BASE}/projects/${encodeURIComponent(name)}/cover_letter`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
   });
 }
 
 export async function renameResume(oldName: string, newName: string): Promise<void> {
-  const res = await fetch(`${BASE}/resumes/${encodeURIComponent(oldName)}/rename`, {
+  const res = await fetch(`${BASE}/projects/${encodeURIComponent(oldName)}/rename`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ new_name: newName }),
@@ -105,7 +153,7 @@ export async function renameResume(oldName: string, newName: string): Promise<vo
 }
 
 export async function deleteResume(name: string): Promise<void> {
-  await fetch(`${BASE}/resumes/${encodeURIComponent(name)}`, { method: "DELETE" });
+  await fetch(`${BASE}/projects/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
 // ── Chat threads ──────────────────────────────────────────────────────────────
@@ -124,31 +172,31 @@ export interface ChatThreadFull {
   messages: import("./components/AIPanel").ChatMessage[];
 }
 
-export async function listChatThreads(resume: string): Promise<ChatThreadSummary[]> {
-  const res = await fetch(`${BASE}/chats/${encodeURIComponent(resume)}`);
+export async function listChatThreads(project: string): Promise<ChatThreadSummary[]> {
+  const res = await fetch(`${BASE}/chats/${encodeURIComponent(project)}`);
   if (!res.ok) return [];
   return res.json();
 }
 
-export async function getChatThread(resume: string, threadId: string): Promise<ChatThreadFull | null> {
-  const res = await fetch(`${BASE}/chats/${encodeURIComponent(resume)}/${encodeURIComponent(threadId)}`);
+export async function getChatThread(project: string, threadId: string): Promise<ChatThreadFull | null> {
+  const res = await fetch(`${BASE}/chats/${encodeURIComponent(project)}/${encodeURIComponent(threadId)}`);
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function saveChatThread(
-  resume: string,
+  project: string,
   thread: { id: string; title: string; created_at: string; messages: unknown[] },
 ): Promise<void> {
-  await fetch(`${BASE}/chats/${encodeURIComponent(resume)}/${encodeURIComponent(thread.id)}`, {
+  await fetch(`${BASE}/chats/${encodeURIComponent(project)}/${encodeURIComponent(thread.id)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title: thread.title, created_at: thread.created_at, messages: thread.messages }),
   });
 }
 
-export async function deleteChatThread(resume: string, threadId: string): Promise<void> {
-  await fetch(`${BASE}/chats/${encodeURIComponent(resume)}/${encodeURIComponent(threadId)}`, {
+export async function deleteChatThread(project: string, threadId: string): Promise<void> {
+  await fetch(`${BASE}/chats/${encodeURIComponent(project)}/${encodeURIComponent(threadId)}`, {
     method: "DELETE",
   });
 }

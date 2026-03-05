@@ -17,37 +17,38 @@ _KNOWLEDGE_BLOCK = (
     else ""
 )
 
-# ── System prompts ─────────────────────────────────────────────────────────────
-_CHAT_SYSTEM_BASE = """You are a helpful LaTeX resume assistant. You have full access to the candidate's current resume source.
+# ── System prompt ──────────────────────────────────────────────────────────────
+_CHAT_SYSTEM_BASE = """You are a helpful LaTeX resume assistant. Each project has two files:
+
+1. **resume.tex** — the tailored resume
+2. **cover_letter.tex** — the cover letter for this application
 
 You can:
-- Answer questions about the resume, discuss potential improvements, give advice on tailoring it for specific roles.
-- Edit the resume by calling the `edit_resume` tool.
+- Answer questions, discuss improvements, give advice on tailoring for a role.
+- Edit the resume by calling `edit_resume`.
+- Edit/write the cover letter by calling `edit_cover_letter`.
+- Do both in the same turn when the user asks to tailor the resume AND write a cover letter.
 
-Call `edit_resume` ONLY when:
-- The user explicitly asks you to make a change, OR
-- You have discussed what to change and are now ready to apply it.
+Guidelines:
+- Call `edit_resume` only when ready to apply specific changes to the resume.
+- Call `edit_cover_letter` when the user asks for a cover letter, asks you to apply for a job, or wants cover letter changes.
+- When you call a tool, include a short conversational message explaining what you did.
+- If just chatting or brainstorming — respond conversationally, no tool calls."""
 
-When you call `edit_resume`, include a short friendly message in `explanation` telling the user what you changed so they can review before accepting.
-
-If the user is asking a question, chatting, or brainstorming — just respond conversationally without calling the tool."""
-
-_CHAT_SYSTEM_NO_KB = _CHAT_SYSTEM_BASE
 
 def _build_system(use_knowledge_base: bool) -> str:
     if use_knowledge_base and _KNOWLEDGE_BLOCK:
         return _CHAT_SYSTEM_BASE + _KNOWLEDGE_BLOCK
-    return _CHAT_SYSTEM_NO_KB
+    return _CHAT_SYSTEM_BASE
 
 
-# ── Tool definition ────────────────────────────────────────────────────────────
-_EDIT_TOOL = {
+# ── Tool definitions ───────────────────────────────────────────────────────────
+_EDIT_RESUME_TOOL = {
     "type": "function",
     "function": {
         "name": "edit_resume",
         "description": (
-            "Apply edits to the LaTeX resume. "
-            "Call this only when you are ready to apply specific changes. "
+            "Apply edits to resume.tex. "
             "Return the COMPLETE updated LaTeX source — every line, nothing omitted."
         ),
         "parameters": {
@@ -55,11 +56,11 @@ _EDIT_TOOL = {
             "properties": {
                 "suggested_latex": {
                     "type": "string",
-                    "description": "The complete updated LaTeX source with all changes applied.",
+                    "description": "Complete updated LaTeX source for the resume.",
                 },
                 "explanation": {
                     "type": "string",
-                    "description": "A brief, friendly summary of what was changed (shown to the user before they accept/reject).",
+                    "description": "Brief, friendly summary of what was changed.",
                 },
             },
             "required": ["suggested_latex", "explanation"],
@@ -67,8 +68,36 @@ _EDIT_TOOL = {
     },
 }
 
+_EDIT_COVER_LETTER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "edit_cover_letter",
+        "description": (
+            "Write or edit cover_letter.tex for this project. "
+            "Return a COMPLETE, compilable LaTeX document. "
+            "Call this when the user asks for a cover letter or wants to apply for a job."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "suggested_latex": {
+                    "type": "string",
+                    "description": "Complete updated LaTeX source for the cover letter.",
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "Brief, friendly summary of what was written/changed.",
+                },
+            },
+            "required": ["suggested_latex", "explanation"],
+        },
+    },
+}
 
-# ── Main chat function ─────────────────────────────────────────────────────────
+_TOOLS = [_EDIT_RESUME_TOOL, _EDIT_COVER_LETTER_TOOL]
+
+
+# ── Model list ─────────────────────────────────────────────────────────────────
 SUPPORTED_MODELS = [
     "gpt-5",
     "gpt-5-mini",
@@ -81,23 +110,33 @@ SUPPORTED_MODELS = [
     "o3-mini",
 ]
 
+
+# ── Main chat function ─────────────────────────────────────────────────────────
 async def ai_chat(
-    latex: str,
-    prompt: str,
+    resume_latex: str,
+    cover_letter_latex: str = "",
+    prompt: str = "",
     images: list[str] | None = None,
     history: list[dict] | None = None,
     use_knowledge_base: bool = True,
     model: str = "gpt-4o",
 ) -> dict:
     """
-    Returns a dict:
-      {"type": "message", "message": str, "suggested_latex": None}
-      {"type": "edit",    "message": str, "suggested_latex": str}
+    Returns a dict with one of these types:
+      "message"               – plain chat, no edits
+      "edit"                  – resume edited
+      "edit_cover_letter"     – cover letter edited/written
+      "edit_and_cover_letter" – both edited in one turn
+    Plus fields: message, suggested_resume, suggested_cover_letter
     """
-    # Build the current user message content
+    cl_section = (
+        f"\n\n---\n**cover_letter.tex (current):**\n```latex\n{cover_letter_latex}\n```"
+        if cover_letter_latex.strip()
+        else "\n\n---\n**cover_letter.tex:** (empty — not written yet)"
+    )
     text_part = (
-        f"Here is my current resume (LaTeX source):\n\n```latex\n{latex}\n```\n\n"
-        f"{prompt}"
+        f"**resume.tex (current):**\n```latex\n{resume_latex}\n```"
+        f"{cl_section}\n\n---\n{prompt}"
     )
 
     if images:
@@ -114,48 +153,51 @@ async def ai_chat(
         user_message,
     ]
 
-    # o-series models don't support temperature or tool_choice="auto"
     _model = model if model in SUPPORTED_MODELS else "gpt-4o"
-    create_kwargs: dict = dict(model=_model, messages=messages, tools=[_EDIT_TOOL])
+    create_kwargs: dict = dict(model=_model, messages=messages, tools=_TOOLS)
     if not _model.startswith("o"):
         create_kwargs["temperature"] = 0.3
         create_kwargs["tool_choice"] = "auto"
 
     response = await client.chat.completions.create(**create_kwargs)
-
     choice = response.choices[0]
     msg = choice.message
 
-    # ── Tool call path ──────────────────────────────────────────────────────────
+    suggested_resume: str | None = None
+    suggested_cover_letter: str | None = None
+    explanations: list[str] = []
+
     if msg.tool_calls:
-        tool_call = msg.tool_calls[0]
-        args = json.loads(tool_call.function.arguments)
-        suggested_latex = _strip_fences(args.get("suggested_latex", ""))
-        explanation = args.get("explanation", "I've made the requested changes.")
-        return {
-            "type": "edit",
-            "message": explanation,
-            "suggested_latex": suggested_latex,
-        }
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments)
+            latex_src = _strip_fences(args.get("suggested_latex", ""))
+            expl = args.get("explanation", "")
+            if tc.function.name == "edit_resume":
+                suggested_resume = latex_src
+                explanations.append(expl or "I've updated the resume.")
+            elif tc.function.name == "edit_cover_letter":
+                suggested_cover_letter = latex_src
+                explanations.append(expl or "I've written the cover letter.")
 
-    # ── Plain chat path ────────────────────────────────────────────────────────
+    if suggested_resume and suggested_cover_letter:
+        resp_type = "edit_and_cover_letter"
+    elif suggested_resume:
+        resp_type = "edit"
+    elif suggested_cover_letter:
+        resp_type = "edit_cover_letter"
+    else:
+        resp_type = "message"
+
+    reply = (msg.content or "").strip()
+    if explanations and not reply:
+        reply = " ".join(explanations)
+
     return {
-        "type": "message",
-        "message": (msg.content or "").strip(),
-        "suggested_latex": None,
+        "type": resp_type,
+        "message": reply,
+        "suggested_resume": suggested_resume,
+        "suggested_cover_letter": suggested_cover_letter,
     }
-
-
-# ── Cover letter (unchanged) ───────────────────────────────────────────────────
-COVER_LETTER_SYSTEM = f"""You are an expert at writing professional, tailored cover letters in LaTeX. You have deep knowledge of the candidate described below.
-
-Generate a complete, compilable LaTeX document for a cover letter that:
-- Speaks specifically to the role and company provided
-- Highlights the candidate's most relevant experiences and skills from the knowledge base
-- Uses concrete details, metrics, and project names — never generic filler
-- Sounds natural and confident, not stiff or over-formatted
-
-Use a clean, professional LaTeX letter class or article class. Return ONLY the raw LaTeX source — no explanations, no markdown code fences, no extra text.{_KNOWLEDGE_BLOCK}"""
 
 
 def _strip_fences(text: str) -> str:
@@ -164,6 +206,18 @@ def _strip_fences(text: str) -> str:
         end = -1 if lines[-1].strip() == "```" else len(lines)
         return "\n".join(lines[1:end])
     return text
+
+
+# ── Standalone cover letter (for the modal route) ─────────────────────────────
+COVER_LETTER_SYSTEM = f"""You are an expert at writing professional, tailored cover letters in LaTeX.
+
+Generate a complete, compilable LaTeX document for a cover letter that:
+- Speaks specifically to the role and company provided
+- Highlights the candidate's most relevant experiences and skills
+- Uses concrete details, metrics, and project names — never generic filler
+- Sounds natural and confident
+
+Use a clean article or letter class. Return ONLY raw LaTeX — no markdown fences, no extra text.{_KNOWLEDGE_BLOCK}"""
 
 
 async def ai_generate_cover_letter(

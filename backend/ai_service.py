@@ -27,13 +27,13 @@ You can:
 - Answer questions, discuss improvements, give advice on tailoring for a role.
 - Edit the resume by calling `edit_resume`.
 - Edit/write the cover letter by calling `edit_cover_letter`.
-- Do both in the same turn when the user asks to tailor the resume AND write a cover letter.
 
-Guidelines:
-- Call `edit_resume` only when ready to apply specific changes to the resume.
-- Call `edit_cover_letter` when the user asks for a cover letter, asks you to apply for a job, or wants cover letter changes.
-- When you call a tool, include a short conversational message explaining what you did.
-- If just chatting or brainstorming — respond conversationally, no tool calls."""
+Strict rules on when to call each tool:
+- Call `edit_resume` ONLY when the user explicitly asks to edit, update, tailor, or optimize the resume.
+- Call `edit_cover_letter` ONLY when the user explicitly mentions "cover letter" or asks you to write/update/tailor the cover letter. NEVER touch the cover letter unless directly asked.
+- If the user asks to tailor the resume (with no mention of a cover letter), call ONLY `edit_resume`.
+- If just chatting or brainstorming — respond conversationally, no tool calls.
+- When you call a tool, include a short conversational message explaining what you did."""
 
 
 def _build_system(use_knowledge_base: bool) -> str:
@@ -75,7 +75,8 @@ _EDIT_COVER_LETTER_TOOL = {
         "description": (
             "Write or edit cover_letter.tex for this project. "
             "Return a COMPLETE, compilable LaTeX document. "
-            "Call this when the user asks for a cover letter or wants to apply for a job."
+            "ONLY call this when the user explicitly asks for a cover letter or asks to edit the cover letter. "
+            "Do NOT call this when the user is only asking about the resume."
         ),
         "parameters": {
             "type": "object",

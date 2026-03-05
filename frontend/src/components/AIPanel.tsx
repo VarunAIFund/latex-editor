@@ -503,9 +503,39 @@ export default function AIPanel({ resumeLatex, coverLetterLatex, pdfBase64, proj
     }
   };
 
+  // ── Resizable panel ──────────────────────────────────────────────────────────
+  const [panelHeight, setPanelHeight] = useState(380);
+  const dragStartY = useRef<number | null>(null);
+  const dragStartH = useRef<number>(380);
+
+  const onDragStart = (e: React.MouseEvent) => {
+    dragStartY.current = e.clientY;
+    dragStartH.current = panelHeight;
+    const onMove = (ev: MouseEvent) => {
+      if (dragStartY.current === null) return;
+      const delta = dragStartY.current - ev.clientY; // dragging up = taller
+      setPanelHeight(Math.max(180, Math.min(800, dragStartH.current + delta)));
+    };
+    const onUp = () => {
+      dragStartY.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-gray-900 border-t border-gray-700 flex flex-col" style={{ height: "380px" }}>
+    <div className="bg-gray-900 border-t border-gray-700 flex flex-col" style={{ height: panelHeight }}>
+      {/* Drag handle */}
+      <div
+        onMouseDown={onDragStart}
+        className="h-1.5 flex-shrink-0 cursor-row-resize hover:bg-indigo-600/50 transition-colors group"
+        title="Drag to resize"
+      >
+        <div className="mx-auto mt-0.5 w-8 h-0.5 rounded-full bg-gray-700 group-hover:bg-indigo-500 transition-colors" />
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">

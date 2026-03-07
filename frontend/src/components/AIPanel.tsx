@@ -201,7 +201,7 @@ Instructions:
 1. Extract every skill, tool, technology, methodology, and keyword from the job description (including "nice to have" / "ways to stand out" sections).
 
 2. For each keyword, aggressively look for a home in my existing bullet points:
-   - Cast a wide net — if the keyword is even tangentially related to what a bullet describes, integrate it. You do not need a perfect match. For example: if a bullet mentions "CI/CD pipeline," also add "GitHub Actions" there. If a bullet mentions GPU training, add "CUDA." If a bullet mentions packaging or deployment, work in "Linux" or relevant build terminology.
+   - Cast a wide net — if the keyword is even tangentially related to what a bullet describes, integrate it. You do not need a perfect match. Ask yourself: "does the work described in this bullet plausibly involve this skill or concept?" If yes, weave it in.
    - Rephrase the bullet naturally to include the keyword — do not just append it. The bullet should still read like a real accomplishment.
    - A single bullet can absorb multiple related keywords at once.
    - PRIORITIZE putting keywords into bullets over Technical Skills. That is where ATS weight matters most.
@@ -210,7 +210,9 @@ Instructions:
 
 4. Do not duplicate — if a keyword is already present somewhere in the resume, skip re-adding it.
 
-5. Preserve all formatting, layout, and one-page constraint.`,
+5. NEVER remove existing content. Only add. Every skill, language, tool, and bullet point that exists in the original resume must still be present in the output — you may reword bullets but may not delete them or drop items from Technical Skills.
+
+6. Preserve all formatting, layout, and one-page constraint.`,
   },
   {
     label: "Tailor Resume",
@@ -351,17 +353,18 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
-  const [model, setModel] = useState("gpt-4o");
+  const [model, setModel] = useState("gpt-5-mini");
   const [availableModels, setAvailableModels] = useState<string[]>([
+    "gpt-5.4",
+    "gpt-5.4-pro",
     "gpt-5",
     "gpt-5-mini",
-    "gpt-5-thinking",
-    "gpt-4o",
-    "gpt-4o-mini",
+    "gpt-5-nano",
     "gpt-4.1",
     "gpt-4.1-mini",
+    "gpt-4o",
     "o4-mini",
-    "o3-mini",
+    "o3",
   ]);
   const [pdfAttaching, setPdfAttaching] = useState(false);
   const [trimming, setTrimming] = useState(false);

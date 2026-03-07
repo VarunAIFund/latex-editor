@@ -101,15 +101,16 @@ _TOOLS = [_EDIT_RESUME_TOOL, _EDIT_COVER_LETTER_TOOL]
 
 # ── Model list ─────────────────────────────────────────────────────────────────
 SUPPORTED_MODELS = [
+    "gpt-5.4",
+    "gpt-5.4-pro",
     "gpt-5",
     "gpt-5-mini",
-    "gpt-5-thinking",
-    "gpt-4o",
-    "gpt-4o-mini",
+    "gpt-5-nano",
     "gpt-4.1",
     "gpt-4.1-mini",
+    "gpt-4o",
     "o4-mini",
-    "o3-mini",
+    "o3",
 ]
 
 
@@ -121,7 +122,7 @@ async def ai_chat(
     images: list[str] | None = None,
     history: list[dict] | None = None,
     use_knowledge_base: bool = True,
-    model: str = "gpt-4o",
+    model: str = "gpt-5-mini",
 ) -> dict:
     """
     Returns a dict with one of these types:
@@ -165,11 +166,12 @@ async def ai_chat(
         user_message,
     ]
 
-    _model = model if model in SUPPORTED_MODELS else "gpt-4o"
+    _model = model if model in SUPPORTED_MODELS else "gpt-5-mini"
     create_kwargs: dict = dict(model=_model, messages=messages, tools=_TOOLS)
-    if not _model.startswith("o"):
+    _no_temperature = _model.startswith("o") or _model.startswith("gpt-5")
+    if not _no_temperature:
         create_kwargs["temperature"] = 0.3
-        create_kwargs["tool_choice"] = "auto"
+    create_kwargs["tool_choice"] = "auto"
 
     response = await client.chat.completions.create(**create_kwargs)
     choice = response.choices[0]
@@ -239,7 +241,7 @@ async def ai_generate_cover_letter(
     company_description: str,
 ) -> str:
     response = await client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5-mini",
         messages=[
             {"role": "system", "content": COVER_LETTER_SYSTEM},
             {

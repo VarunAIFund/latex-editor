@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { FolderOpen, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X, Pin, PinOff } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Upload, ChevronRight, Pencil, Check, X, Pin, PinOff, Briefcase } from "lucide-react";
 import { deleteResume, renameResume } from "../api";
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   onNew: (name: string, latex?: string) => void;
   onRename: (oldName: string, newName: string) => void;
   onRefresh: () => void;
+  onNewJob: () => void;
 }
 
 export default function ResumeSidebar({
@@ -22,6 +23,7 @@ export default function ResumeSidebar({
   onNew,
   onRename,
   onRefresh,
+  onNewJob,
 }: Props) {
   const [newName, setNewName] = useState("");
   const [showNewInput, setShowNewInput] = useState(false);
@@ -90,6 +92,17 @@ export default function ResumeSidebar({
           <FolderOpen size={14} />
           Projects
         </h2>
+      </div>
+
+      {/* New Job button */}
+      <div className="px-3 pt-3 pb-1 shrink-0">
+        <button
+          onClick={onNewJob}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-teal-700/40 hover:bg-teal-700/70 border border-teal-600/50 hover:border-teal-500 text-teal-300 hover:text-teal-100 text-xs font-medium transition-colors"
+        >
+          <Briefcase size={13} />
+          New Job Application
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">

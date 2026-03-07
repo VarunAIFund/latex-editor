@@ -6,8 +6,10 @@ import PdfPreview from "./components/PdfPreview";
 import AIPanel from "./components/AIPanel";
 import type { AIpanelHandle } from "./components/AIPanel";
 import MarginsPanel from "./components/MarginsPanel";
-import { compileLatex, listProjects, loadProject, saveResume, saveCoverLetter, createProject, analyzeLayout } from "./api";
+import NewJobModal from "./components/NewJobModal";
+import { compileLatex, listProjects, loadProject, saveResume, saveCoverLetter, createProject, analyzeLayout, aiEdit, saveChatThread } from "./api";
 import type { BulletInfo } from "./components/AIPanel";
+import { buildAtsPrompt, buildCoverLetterPrompt } from "./constants/prompts";
 import * as pdfjsLib from "pdfjs-dist";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -26,6 +28,7 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("pinnedProjects") ?? "[]"); }
     catch { return []; }
   });
+  const [showNewJobModal, setShowNewJobModal] = useState(false);
 
   // Per-project file content
   const [resumeLatex, setResumeLatex] = useState("");
@@ -165,6 +168,74 @@ export default function App() {
     setDiff(null);
     setActiveTab("resume");
     triggerCompile(data.resume);
+  };
+
+  // ── New job application flow ────────────────────────────────────────────────
+
+  const handleNewJob = async (jobDescription: string, projectLabel: string, baseProject: string) => {
+    // 1. Load base resume content
+    const baseData = await loadProject(baseProject);
+
+    // 2. Create the new project seeded with the base resume
+    await createProject(projectLabel, baseData.resume);
+    await fetchProjects();
+
+    // 3. Build prompts with the job description embedded
+    const atsPrompt = buildAtsPrompt(jobDescription);
+    const clPrompt = buildCoverLetterPrompt(jobDescription);
+
+    // 4. Run both AI calls in parallel
+    const [atsResult, clResult] = await Promise.all([
+      aiEdit(baseData.resume, "", atsPrompt, [], [], true, "gpt-5-mini"),
+      aiEdit(baseData.resume, "", clPrompt, [], [], true, "gpt-5-mini"),
+    ]);
+
+    // 5. Pre-seed chat threads so they appear immediately when the user opens the project
+    const now = new Date().toISOString();
+    const atsThreadId = crypto.randomUUID();
+    const clThreadId = crypto.randomUUID();
+
+    const atsMessages: object[] = [
+      { role: "user", text: atsPrompt },
+      {
+        role: "assistant",
+        text: atsResult.message,
+        ...(atsResult.type === "edit" || atsResult.type === "edit_and_cover_letter"
+          ? {
+              pendingEdit: {
+                suggestedLatex: atsResult.suggested_resume ?? "",
+                explanation: atsResult.message,
+              },
+              editAccepted: null,
+            }
+          : {}),
+      },
+    ];
+
+    const clMessages: object[] = [
+      { role: "user", text: clPrompt },
+      {
+        role: "assistant",
+        text: clResult.message,
+        ...(clResult.type === "edit_cover_letter" || clResult.type === "edit_and_cover_letter"
+          ? {
+              pendingCLEdit: {
+                suggestedLatex: clResult.suggested_cover_letter ?? "",
+                explanation: clResult.message,
+              },
+              clEditAccepted: null,
+            }
+          : {}),
+      },
+    ];
+
+    await Promise.all([
+      saveChatThread(projectLabel, { id: atsThreadId, title: "ATS Optimize", created_at: now, messages: atsMessages }),
+      saveChatThread(projectLabel, { id: clThreadId, title: "Cover Letter", created_at: new Date(Date.now() + 1).toISOString(), messages: clMessages }),
+    ]);
+
+    // 6. Switch to the new project
+    await handleSelect(projectLabel);
   };
 
   // ── Manual save ─────────────────────────────────────────────────────────────
@@ -323,6 +394,7 @@ export default function App() {
         onNew={handleNew}
         onRename={handleRename}
         onRefresh={fetchProjects}
+        onNewJob={() => setShowNewJobModal(true)}
       />
 
       {/* Main area */}
@@ -510,6 +582,15 @@ export default function App() {
           />
         )}
       </div>
+
+      {/* New Job Modal */}
+      {showNewJobModal && (
+        <NewJobModal
+          pinnedProjects={pinnedProjects}
+          onClose={() => setShowNewJobModal(false)}
+          onCreate={handleNewJob}
+        />
+      )}
     </div>
   );
 }

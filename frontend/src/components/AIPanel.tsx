@@ -189,11 +189,17 @@ const QUICK_PROMPTS: { label: string; color: string; text: string }[] = [
   {
     label: "ATS Optimize",
     color: "text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/40",
-    text: `I want my resume to pass ATS filters and still read well to human recruiters. Based on this job description:
+    text: `ATS optimize my resume using this job description:
 
 [paste job description here]
 
-Can you optimize my resume content to include relevant keywords and phrases from the posting in a natural way?`,
+Instructions:
+1. Extract every skill, tool, technology, and keyword from the job description above.
+2. For each one, check if it relates to any of my existing project or experience bullet points — even loosely (e.g. I built something using that technology, or the concept overlaps with what I did).
+   - If yes: naturally weave that keyword/skill into the relevant bullet point(s). Rephrase the bullet if needed to incorporate it authentically — do not just append words, make it flow.
+3. For any remaining skills or keywords that genuinely have no connection to my existing bullets: add them to my Technical Skills section under the most appropriate category.
+4. Do not fabricate experience I don't have. Only integrate a keyword into a bullet if the underlying work is plausibly related.
+5. Preserve all formatting, layout, and one-page constraint.`,
   },
   {
     label: "Tailor Resume",

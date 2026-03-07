@@ -191,14 +191,25 @@ const QUICK_PROMPTS: { label: string; color: string; text: string }[] = [
     color: "text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/40",
     text: `ATS optimize my resume using this job description:
 
+---JOB DESCRIPTION START---
 [paste job description here]
+---JOB DESCRIPTION END---
+
+Your goal is to get as many of the job description's keywords into my resume as possible — spread across bullet points AND Technical Skills — so ATS scanners see strong signal throughout the document, not just in one section.
 
 Instructions:
-1. Extract every skill, tool, technology, and keyword from the job description above.
-2. For each one, check if it relates to any of my existing project or experience bullet points — even loosely (e.g. I built something using that technology, or the concept overlaps with what I did).
-   - If yes: naturally weave that keyword/skill into the relevant bullet point(s). Rephrase the bullet if needed to incorporate it authentically — do not just append words, make it flow.
-3. For any remaining skills or keywords that genuinely have no connection to my existing bullets: add them to my Technical Skills section under the most appropriate category.
-4. Do not fabricate experience I don't have. Only integrate a keyword into a bullet if the underlying work is plausibly related.
+1. Extract every skill, tool, technology, methodology, and keyword from the job description (including "nice to have" / "ways to stand out" sections).
+
+2. For each keyword, aggressively look for a home in my existing bullet points:
+   - Cast a wide net — if the keyword is even tangentially related to what a bullet describes, integrate it. You do not need a perfect match. For example: if a bullet mentions "CI/CD pipeline," also add "GitHub Actions" there. If a bullet mentions GPU training, add "CUDA." If a bullet mentions packaging or deployment, work in "Linux" or relevant build terminology.
+   - Rephrase the bullet naturally to include the keyword — do not just append it. The bullet should still read like a real accomplishment.
+   - A single bullet can absorb multiple related keywords at once.
+   - PRIORITIZE putting keywords into bullets over Technical Skills. That is where ATS weight matters most.
+
+3. After integrating into bullets, take every remaining keyword that did not find a bullet home and add it to Technical Skills under the most appropriate existing category. Do not skip keywords just because they seem advanced — if the job asks for it, add it.
+
+4. Do not duplicate — if a keyword is already present somewhere in the resume, skip re-adding it.
+
 5. Preserve all formatting, layout, and one-page constraint.`,
   },
   {
@@ -354,7 +365,10 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
   ]);
   const [pdfAttaching, setPdfAttaching] = useState(false);
   const [trimming, setTrimming] = useState(false);
-  const [trimmingRound, setTrimmingRound] = useState<{ current: number; max: number } | null>(null);
+  const [trimmingRound, setTrimmingRound] = useState<{
+    current: number;
+    max: number;
+  } | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

@@ -122,7 +122,7 @@ async def ai_chat(
     images: list[str] | None = None,
     history: list[dict] | None = None,
     use_knowledge_base: bool = True,
-    model: str = "gpt-5-mini",
+    model: str = "gpt-4o",
 ) -> dict:
     """
     Returns a dict with one of these types:
@@ -166,7 +166,7 @@ async def ai_chat(
         user_message,
     ]
 
-    _model = model if model in SUPPORTED_MODELS else "gpt-5-mini"
+    _model = model if model in SUPPORTED_MODELS else "gpt-4o"
     create_kwargs: dict = dict(model=_model, messages=messages, tools=_TOOLS)
     _no_temperature = _model.startswith("o") or _model.startswith("gpt-5")
     if not _no_temperature:
@@ -241,7 +241,7 @@ async def ai_generate_cover_letter(
     company_description: str,
 ) -> str:
     response = await client.chat.completions.create(
-        model="gpt-5-mini",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": COVER_LETTER_SYSTEM},
             {

@@ -10,17 +10,17 @@ Your goal is to get as many of the job description's keywords into my resume as 
 Instructions:
 1. Extract every skill, tool, technology, methodology, and keyword from the job description (including "nice to have" / "ways to stand out" sections).
 
-2. For each keyword, aggressively look for a home in my existing bullet points:
-   - Cast a wide net — if the keyword is even tangentially related to what a bullet describes, integrate it. You do not need a perfect match. Ask yourself: "does the work described in this bullet plausibly involve this skill or concept?" If yes, weave it in.
-   - Rephrase the bullet naturally to include the keyword — do not just append it. The bullet should still read like a real accomplishment.
-   - A single bullet can absorb multiple related keywords at once.
+2. For each keyword, look for a home in my existing bullet points:
+   - Only integrate a keyword into a bullet if the work described in that bullet is plausibly related to it — do not fabricate experience.
+   - If a keyword fits: REWRITE the bullet to incorporate it by replacing wordy or filler language with the keyword — do not extend the sentence. The rewritten bullet must be the same length or shorter than the original.
+   - A single bullet can absorb multiple related keywords at once, as long as the bullet stays the same length or shorter.
    - PRIORITIZE putting keywords into bullets over Technical Skills. That is where ATS weight matters most.
 
-3. After integrating into bullets, take every remaining keyword that did not find a bullet home and add it to Technical Skills under the most appropriate existing category. Do not skip keywords just because they seem advanced — if the job asks for it, add it.
+3. After integrating into bullets, add every remaining keyword that did not find a bullet home to Technical Skills under the most appropriate existing category. There is no plausibility restriction here — add every keyword from the job description that is not already listed, regardless of whether you have direct experience with it.
 
 4. Do not duplicate — if a keyword is already present somewhere in the resume, skip re-adding it.
 
-5. NEVER remove existing content. Only add. Every skill, language, tool, and bullet point that exists in the original resume must still be present in the output — you may reword bullets but may not delete them or drop items from Technical Skills.
+5. You may shorten and rephrase bullet text to accommodate keywords, but never delete entire bullets or drop items from Technical Skills. Every bullet point and every Technical Skills entry must still be present in the output.
 
 6. Preserve all formatting, layout, and one-page constraint.`;
 }

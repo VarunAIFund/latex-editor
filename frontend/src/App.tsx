@@ -1,5 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Save, RefreshCw, FileDown, Check, X, Sparkles, FileText, Mail } from "lucide-react";
+import {
+  Save,
+  RefreshCw,
+  FileDown,
+  Check,
+  X,
+  Sparkles,
+  FileText,
+  Mail,
+} from "lucide-react";
 import ResumeSidebar from "./components/ResumeSidebar";
 import LatexEditor from "./components/LatexEditor";
 import PdfPreview from "./components/PdfPreview";
@@ -7,7 +16,17 @@ import AIPanel from "./components/AIPanel";
 import type { AIpanelHandle } from "./components/AIPanel";
 import MarginsPanel from "./components/MarginsPanel";
 import NewJobModal from "./components/NewJobModal";
-import { compileLatex, listProjects, loadProject, saveResume, saveCoverLetter, createProject, analyzeLayout, aiEdit, saveChatThread } from "./api";
+import {
+  compileLatex,
+  listProjects,
+  loadProject,
+  saveResume,
+  saveCoverLetter,
+  createProject,
+  analyzeLayout,
+  aiEdit,
+  saveChatThread,
+} from "./api";
 import type { BulletInfo } from "./components/AIPanel";
 import { buildAtsPrompt, buildCoverLetterPrompt } from "./constants/prompts";
 import * as pdfjsLib from "pdfjs-dist";
@@ -25,8 +44,11 @@ export default function App() {
   const [projects, setProjects] = useState<string[]>([]);
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [pinnedProjects, setPinnedProjects] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("pinnedProjects") ?? "[]"); }
-    catch { return []; }
+    try {
+      return JSON.parse(localStorage.getItem("pinnedProjects") ?? "[]");
+    } catch {
+      return [];
+    }
   });
   const [showNewJobModal, setShowNewJobModal] = useState(false);
 
@@ -59,7 +81,9 @@ export default function App() {
 
   // One-page guard
   const [overOnePage, setOverOnePage] = useState(false);
-  const [bulletAnalysis, setBulletAnalysis] = useState<BulletInfo[] | null>(null);
+  const [bulletAnalysis, setBulletAnalysis] = useState<BulletInfo[] | null>(
+    null,
+  );
   const aiPanelRef = useRef<AIpanelHandle>(null);
 
   // Debounce refs
@@ -75,53 +99,63 @@ export default function App() {
 
   const handleTogglePin = useCallback((name: string) => {
     setPinnedProjects((prev) => {
-      const next = prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name];
+      const next = prev.includes(name)
+        ? prev.filter((p) => p !== name)
+        : [...prev, name];
       localStorage.setItem("pinnedProjects", JSON.stringify(next));
       return next;
     });
   }, []);
 
-  useEffect(() => { fetchProjects(); }, [fetchProjects]);
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
   // ── Compile ─────────────────────────────────────────────────────────────────
 
-  const triggerCompile = useCallback((src: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      setCompiling(true);
-      try {
-        const result = await compileLatex(src);
-        setPdfBase64(result.pdf_base64);
-        setCompileError(result.error);
-        if (result.pdf_base64 && activeTab === "resume") {
-          const pages = await countPdfPages(result.pdf_base64);
-          if (pages > 1) {
-            setOverOnePage(true);
-            analyzeLayout(result.pdf_base64).then(setBulletAnalysis);
-          } else {
-            setOverOnePage(false);
-            setBulletAnalysis(null);
+  const triggerCompile = useCallback(
+    (src: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(async () => {
+        setCompiling(true);
+        try {
+          const result = await compileLatex(src);
+          setPdfBase64(result.pdf_base64);
+          setCompileError(result.error);
+          if (result.pdf_base64 && activeTab === "resume") {
+            const pages = await countPdfPages(result.pdf_base64);
+            if (pages > 1) {
+              setOverOnePage(true);
+              analyzeLayout(result.pdf_base64).then(setBulletAnalysis);
+            } else {
+              setOverOnePage(false);
+              setBulletAnalysis(null);
+            }
           }
+        } finally {
+          setCompiling(false);
         }
-      } finally {
-        setCompiling(false);
-      }
-    }, 1200);
-  }, [activeTab]);
+      }, 1200);
+    },
+    [activeTab],
+  );
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
 
-  const triggerAutoSave = useCallback((content: string, name: string, target: ActiveTab) => {
-    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
-    autoSaveRef.current = setTimeout(async () => {
-      setSaving(true);
-      if (target === "resume") await saveResume(name, content);
-      else await saveCoverLetter(name, content);
-      setSaving(false);
-      setSavedRecently(true);
-      setTimeout(() => setSavedRecently(false), 2000);
-    }, 2000);
-  }, []);
+  const triggerAutoSave = useCallback(
+    (content: string, name: string, target: ActiveTab) => {
+      if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+      autoSaveRef.current = setTimeout(async () => {
+        setSaving(true);
+        if (target === "resume") await saveResume(name, content);
+        else await saveCoverLetter(name, content);
+        setSaving(false);
+        setSavedRecently(true);
+        setTimeout(() => setSavedRecently(false), 2000);
+      }, 2000);
+    },
+    [],
+  );
 
   // ── Editor change (from Monaco) ─────────────────────────────────────────────
 
@@ -172,7 +206,11 @@ export default function App() {
 
   // ── New job application flow ────────────────────────────────────────────────
 
-  const handleNewJob = async (jobDescription: string, projectLabel: string, baseProject: string) => {
+  const handleNewJob = async (
+    jobDescription: string,
+    projectLabel: string,
+    baseProject: string,
+  ) => {
     // 1. Load base resume content
     const baseData = await loadProject(baseProject);
 
@@ -186,8 +224,8 @@ export default function App() {
 
     // 4. Run both AI calls in parallel
     const [atsResult, clResult] = await Promise.all([
-      aiEdit(baseData.resume, "", atsPrompt, [], [], true, "gpt-5-mini"),
-      aiEdit(baseData.resume, "", clPrompt, [], [], true, "gpt-5-mini"),
+      aiEdit(baseData.resume, "", atsPrompt, [], [], true, "gpt-4o"),
+      aiEdit(baseData.resume, "", clPrompt, [], [], true, "gpt-4o"),
     ]);
 
     // 5. Pre-seed chat threads so they appear immediately when the user opens the project
@@ -200,7 +238,8 @@ export default function App() {
       {
         role: "assistant",
         text: atsResult.message,
-        ...(atsResult.type === "edit" || atsResult.type === "edit_and_cover_letter"
+        ...(atsResult.type === "edit" ||
+        atsResult.type === "edit_and_cover_letter"
           ? {
               pendingEdit: {
                 suggestedLatex: atsResult.suggested_resume ?? "",
@@ -217,7 +256,8 @@ export default function App() {
       {
         role: "assistant",
         text: clResult.message,
-        ...(clResult.type === "edit_cover_letter" || clResult.type === "edit_and_cover_letter"
+        ...(clResult.type === "edit_cover_letter" ||
+        clResult.type === "edit_and_cover_letter"
           ? {
               pendingCLEdit: {
                 suggestedLatex: clResult.suggested_cover_letter ?? "",
@@ -230,8 +270,18 @@ export default function App() {
     ];
 
     await Promise.all([
-      saveChatThread(projectLabel, { id: atsThreadId, title: "ATS Optimize", created_at: now, messages: atsMessages }),
-      saveChatThread(projectLabel, { id: clThreadId, title: "Cover Letter", created_at: new Date(Date.now() + 1).toISOString(), messages: clMessages }),
+      saveChatThread(projectLabel, {
+        id: atsThreadId,
+        title: "ATS Optimize",
+        created_at: now,
+        messages: atsMessages,
+      }),
+      saveChatThread(projectLabel, {
+        id: clThreadId,
+        title: "Cover Letter",
+        created_at: new Date(Date.now() + 1).toISOString(),
+        messages: clMessages,
+      }),
     ]);
 
     // 6. Switch to the new project
@@ -269,7 +319,8 @@ export default function App() {
   async function countPdfPages(base64: string): Promise<number> {
     const url = `data:application/pdf;base64,${base64}`;
     const buf = await (await fetch(url)).arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) })
+      .promise;
     return pdf.numPages;
   }
 
@@ -308,7 +359,11 @@ export default function App() {
 
   // ── AI suggestion → diff view ───────────────────────────────────────────────
 
-  const handleAISuggestion = async (target: DiffTarget, original: string, suggested: string) => {
+  const handleAISuggestion = async (
+    target: DiffTarget,
+    original: string,
+    suggested: string,
+  ) => {
     preDiffPdfRef.current = pdfBase64;
     setDiff({ original, suggested, target });
     // Switch to the affected tab
@@ -329,10 +384,12 @@ export default function App() {
 
     if (diff.target === "resume") {
       setResumeLatex(diff.suggested);
-      if (activeProject) triggerAutoSave(diff.suggested, activeProject, "resume");
+      if (activeProject)
+        triggerAutoSave(diff.suggested, activeProject, "resume");
     } else {
       setCoverLetterLatex(diff.suggested);
-      if (activeProject) triggerAutoSave(diff.suggested, activeProject, "cover_letter");
+      if (activeProject)
+        triggerAutoSave(diff.suggested, activeProject, "cover_letter");
     }
     setDiff(null);
 
@@ -357,7 +414,8 @@ export default function App() {
     // Restore the latex content to before the diff (important for auto-trim diffs
     // where the latex was already applied during the loop)
     if (diff?.target === "resume") setResumeLatex(diff.original);
-    else if (diff?.target === "cover_letter") setCoverLetterLatex(diff.original);
+    else if (diff?.target === "cover_letter")
+      setCoverLetterLatex(diff.original);
     setDiff(null);
     setOverOnePage(false);
     setBulletAnalysis(null);
@@ -471,7 +529,9 @@ export default function App() {
                 <>
                   <span className="text-xs text-amber-400 font-medium flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse inline-block" />
-                    Reviewing AI changes to {diff.target === "cover_letter" ? "cover letter" : "resume"} — PDF shows accepted result
+                    Reviewing AI changes to{" "}
+                    {diff.target === "cover_letter" ? "cover letter" : "resume"}{" "}
+                    — PDF shows accepted result
                   </span>
                   <div className="flex items-center gap-1.5">
                     <button
@@ -520,7 +580,9 @@ export default function App() {
             {/* Over-page banner */}
             {overOnePage && !diff && activeTab === "resume" && (
               <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/40 border-b border-amber-700/50 text-amber-300 text-xs flex-shrink-0">
-                <span className="flex-1">Resume is over 1 page after the last edit.</span>
+                <span className="flex-1">
+                  Resume is over 1 page after the last edit.
+                </span>
                 <button
                   onClick={handleAutoTrim}
                   className="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors"
@@ -539,9 +601,14 @@ export default function App() {
             {/* Editor body */}
             <div className="flex-1 min-h-0 relative">
               {/* Normal editor — always mounted to preserve undo history */}
-              <div className={`absolute inset-0 ${diff ? "invisible" : "visible"}`}>
-                {(activeProject || activeLatex) ? (
-                  <LatexEditor value={activeLatex} onChange={handleLatexChange} />
+              <div
+                className={`absolute inset-0 ${diff ? "invisible" : "visible"}`}
+              >
+                {activeProject || activeLatex ? (
+                  <LatexEditor
+                    value={activeLatex}
+                    onChange={handleLatexChange}
+                  />
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500 text-sm">
                     Select or create a project from the sidebar
@@ -564,7 +631,11 @@ export default function App() {
 
           {/* Preview pane */}
           <div className="flex flex-col w-1/2 min-w-0 min-h-0">
-            <PdfPreview pdfBase64={pdfBase64} error={compileError} loading={compiling} />
+            <PdfPreview
+              pdfBase64={pdfBase64}
+              error={compileError}
+              loading={compiling}
+            />
           </div>
         </div>
 

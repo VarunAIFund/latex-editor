@@ -329,7 +329,7 @@ const AIPanel = forwardRef<AIpanelHandle, Props>(function AIPanel(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
-  const [model, setModel] = useState("gpt-5-mini");
+  const [model, setModel] = useState("gpt-4o");
   const [availableModels, setAvailableModels] = useState<string[]>([
     "gpt-5.4",
     "gpt-5.4-pro",
